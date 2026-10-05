@@ -1,0 +1,465 @@
+{
+  "schema": "novel-ledger.gates-registry.v1",
+  "note": "SKILL.md 不变量区的门禁注册表：invariant_anchor 逐字锚定不变量措辞（每条不变量至少被一个 gate 覆盖）；enforced_by 指向强制实现位（file 存在且 symbol 可查）；proven_by 用 file::test_name 指到用例级（文件存在且用例名真实存在）。tier=mechanism 表示代码强制，tier=prose 表示提示词纪律（doc_marker 必须出现在 enforced_by 文档里）。由 scripts/tests/test_policy_conformance.py 校验。注册表只登记位置，不复制逻辑——逻辑真源在 novel_ledger_core 与各文档本体。",
+  "gates": [
+    {
+      "id": "fresh-worker-per-stage",
+      "invariant_anchor": "默认 `stage-agent` 每阶段一个空上下文",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/autopilot.py",
+          "symbol": "record_session_receipt"
+        },
+        {
+          "file": "scripts/novel_ledger_core/control/stage_jobs.py",
+          "symbol": "enforce_stage_command"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_editorial_architecture.py::test_runner_runs_four_distinct_stage_sessions_and_only_one_chapter",
+        "scripts/tests/test_editorial_architecture.py::test_stage_fence_refuses_next_and_cross_role_submission",
+        "scripts/tests/test_editorial_architecture.py::test_runner_rejects_reused_context_and_missing_receipt_cannot_be_skipped"
+      ]
+    },
+    {
+      "id": "ack-before-next-chapter",
+      "invariant_anchor": "没有 ack 不能进入下一章",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_commitack.py",
+          "symbol": "requires_new_session"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_next_loop.py::test_cannot_begin_next_without_ack",
+        "scripts/tests/test_session_hardening.py::test_ack_session_mode_inline_compact"
+      ]
+    },
+    {
+      "id": "honest-reporting",
+      "invariant_anchor": "无当轮命令 stdout 与退出码",
+      "tier": "prose",
+      "enforced_by": [
+        {
+          "file": "agents/roles/managing-editor.md",
+          "doc_marker": "必需证据"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_policy_conformance.py::test_prose_gate_docs_carry_the_discipline"
+      ]
+    },
+    {
+      "id": "stage-view-isolation",
+      "invariant_anchor": "只写返回的 staging 路径",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/views.py",
+          "symbol": "make_draft_view"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_decoupling_views.py::test_next_returns_decoupled_paths_and_hashes",
+        "scripts/tests/test_decoupling_views.py::test_assemble_view_carries_exactly_what_the_gate_can_see"
+      ]
+    },
+    {
+      "id": "ledger-truth-source",
+      "invariant_anchor": "断电或崩溃先 `ledger verify`",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/ledger/ledger.py",
+          "symbol": "def verify_ledger"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_ledger_recovery.py::test_recommit_after_crash_does_not_double_facts",
+        "scripts/tests/test_ledger_consistency.py::test_facts_and_deaths_quotes_are_gated_from_events"
+      ]
+    },
+    {
+      "id": "submit-validates-without-receipt",
+      "invariant_anchor": "`chapter submit` 直接运行完整机检；组装字段错误原位修正，不消耗正文返工次数",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_submit.py",
+          "symbol": "def submit_output"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_session_hardening.py::test_submit_checks_and_accepts_without_ready_receipt",
+        "scripts/tests/test_session_hardening.py::test_submit_assembly_error_stays_in_place_without_spending_rewrite"
+      ]
+    },
+    {
+      "id": "word-band-hard-gate",
+      "invariant_anchor": "单章 word_band 默认 2500～8000 并硬校验",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_submit.py",
+          "symbol": "_word_gate_result"
+        },
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_flow.py",
+          "symbol": "_scene_budget"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_session_hardening.py::test_word_gate_rejects_short_polished_with_file_kept",
+        "scripts/tests/test_session_hardening.py::test_draft_and_polish_actions_carry_word_band_gap"
+      ]
+    },
+    {
+      "id": "scale-contract",
+      "invariant_anchor": "`book_climax` 只能进末 15%",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/infra/scale.py",
+          "symbol": "ENDGAME_MIN_RATIO"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_book_outline.py::test_scale_contract_rejects_million_word_book_collapsed_to_sixty_chapters",
+        "scripts/tests/test_book_outline.py::test_plan_extend_rejects_early_whole_book_ending_atomically"
+      ]
+    },
+    {
+      "id": "all-volume-outline-contract",
+      "invariant_anchor": "开书先签全书所有卷的总纲，每卷 `outline` 至少 500 个汉字",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/hatch.py",
+          "symbol": "_all_volume_outline_parts"
+        },
+        {
+          "file": "scripts/novel_ledger_core/infra/volume_outline.py",
+          "symbol": "volume_outline_errors"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_all_volume_outlines.py::test_each_volume_minimum_counts_han_characters_only",
+        "scripts/tests/test_all_volume_outlines.py::test_incomplete_book_outlines_reject_before_hatch_writes",
+        "scripts/tests/test_all_volume_outlines.py::test_extend_cannot_change_signed_volume_obligations"
+      ]
+    },
+    {
+      "id": "event-spine-four-layers",
+      "invariant_anchor": "每次 `plan extend` 附带结构化 phase",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/infra/story_map.py",
+          "symbol": "def story_map_errors"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_book_outline.py::test_plan_extend_requires_all_four_event_spine_layers_atomically",
+        "scripts/tests/test_book_outline.py::test_plan_v2_cannot_bypass_contract_by_removing_event_spine"
+      ]
+    },
+    {
+      "id": "usage-four-components",
+      "invariant_anchor": "`uncached` 必须显式给出可为 0",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_usage.py",
+          "symbol": "def record_usage"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_usage.py::test_usage_record_requires_explicit_nonnegative_components",
+        "scripts/tests/test_usage.py::test_usage_budget_stops_next_model_action"
+      ]
+    },
+    {
+      "id": "bounded-rework",
+      "invariant_anchor": "返工最多两轮",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_quality.py",
+          "symbol": "rewrite_limit"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_next_loop.py::test_rewrite_once_then_commit",
+        "scripts/tests/test_next_loop.py::test_second_gate_fail_blocks"
+      ]
+    },
+    {
+      "id": "findings-severity-vocabulary",
+      "invariant_anchor": "只有 BLOCKER 自动返工",
+      "tier": "prose",
+      "enforced_by": [
+        {
+          "file": "references/roles.md",
+          "doc_marker": "BLOCKER"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_repo_layout.py::test_review_severity_vocabulary_is_consistent"
+      ]
+    },
+    {
+      "id": "model-tiering",
+      "invariant_anchor": "独立终审、策划与全书复核用最强档",
+      "tier": "prose",
+      "enforced_by": [
+        {
+          "file": "references/dispatch.md",
+          "doc_marker": "标准档"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_repo_layout.py::test_review_severity_vocabulary_is_consistent"
+      ]
+    },
+    {
+      "id": "hierarchical-memory-deterministic",
+      "invariant_anchor": "不发起模型请求",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/hierarchical_memory.py",
+          "symbol": "def update_hierarchical_memory"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_hierarchical_memory.py::test_one_thousand_chapter_hierarchy_loads_current_phase_without_model_calls",
+        "scripts/tests/test_hierarchical_memory.py::test_hierarchy_rolls_chapters_into_phase_volume_and_book_layers"
+      ]
+    },
+    {
+      "id": "no-prose-dump",
+      "invariant_anchor": "禁止 dump 全文",
+      "tier": "prose",
+      "enforced_by": [
+        {
+          "file": "references/execution-architecture.md",
+          "doc_marker": "状态卡只传路径"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_policy_conformance.py::test_prose_gate_docs_carry_the_discipline"
+      ]
+    },
+    {
+      "id": "active-job-fence",
+      "invariant_anchor": "写命令必须携带当前 `NOVEL_LEDGER_JOB_ID`",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/cli.py",
+          "symbol": "_enforce_autopilot_fence"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_autopilot.py::test_active_job_fence_rejects_other_writers_but_not_status",
+        "scripts/tests/test_autopilot.py::test_blocked_and_complete_do_not_dispatch_workers"
+      ]
+    },
+    {
+      "id": "worker-protocol-version",
+      "invariant_anchor": "确定性 supervisor 跨会话调度",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_dispatch.py",
+          "symbol": "WORKER_PROMPT_PROTOCOL"
+        },
+        {
+          "file": "scripts/novel_ledger_core/control/autopilot.py",
+          "symbol": "build_worker_prompt"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_autopilot.py::test_worker_protocol_version_is_single_sourced"
+      ]
+    },
+    {
+      "id": "completion-threshold",
+      "invariant_anchor": "`--override-target` 是作者显式改约",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_commitack.py",
+          "symbol": "def book_complete"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_ops_commands.py::test_book_complete_blocks_accidental_short_book",
+        "scripts/tests/test_story_review.py::test_complete_requires_all_chapters_and_current_volume_endgame_review"
+      ]
+    },
+    {
+      "id": "plan-batch-brainstorm",
+      "invariant_anchor": "候选≥2 且结构性不同",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_planning.py",
+          "symbol": "select_batch"
+        },
+        {
+          "file": "scripts/novel_ledger_core/content/planning.py",
+          "symbol": "batch_selection_coverage"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_plan_brainstorm.py::test_select_batch_rejects_walkthrough_shapes",
+        "scripts/tests/test_plan_brainstorm.py::test_select_batch_seals_governance_event_and_writes_checks",
+        "scripts/tests/test_plan_brainstorm.py::test_checkpoint_blocks_unwritten_batch_without_selection"
+      ]
+    },
+    {
+      "id": "durable-editorial-findings",
+      "invariant_anchor": "findings 分为",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/reviews.py",
+          "symbol": "record_findings"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_editorial_architecture.py::test_findings_survive_ack_and_dispositions_are_replayable",
+        "scripts/tests/test_editorial_architecture.py::test_final_review_unverifiable_is_durable_and_blocker_cannot_pass"
+      ]
+    },
+    {
+      "id": "explicit-review-contract",
+      "invariant_anchor": "`chapter submit` 直接运行完整机检",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/gates.py",
+          "symbol": "plot_findings_issues"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_editorial_architecture.py::test_review_required_and_unsupported_blocker_stays_in_assembly"
+      ]
+    },
+    {
+      "id": "patch-review-boundary",
+      "invariant_anchor": "单句禁词、台词和勘误优先 `chapter patch`",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_commitack.py",
+          "symbol": "ack_patched_chapter"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_editorial_architecture.py::test_patch_preserves_word_band_and_requires_new_review"
+      ]
+    },
+    {
+      "id": "sqlite-authority",
+      "invariant_anchor": "SQLite 是项目持久化唯一来源",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/infra/database.py",
+          "symbol": "def transaction"
+        },
+        {
+          "file": "scripts/novel_ledger_core/infra/artifact_path.py",
+          "symbol": "def read_bytes"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_sqlite_memory.py::test_database_is_authoritative_after_exports_deleted_or_tampered",
+        "scripts/tests/test_sqlite_memory.py::test_transaction_failure_rolls_back_state_events_prose_and_exports"
+      ]
+    },
+    {
+      "id": "historical-recall-source-evidence",
+      "invariant_anchor": "按需读取 `memory_layers`、`historical_recall`",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/recall.py",
+          "symbol": "def recall"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_sqlite_memory.py::test_recall_filters_future_and_preserves_selected_evidence",
+        "scripts/tests/test_sqlite_memory.py::test_explicit_old_event_is_prioritized_and_missing_reference_is_rejected",
+        "scripts/tests/test_sqlite_memory.py::test_patch_invalidates_old_quote_and_keeps_revision_history"
+      ]
+    },
+    {
+      "id": "mandatory-story-review",
+      "invariant_anchor": "跨卷与终局必须独立剧情复核",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/story_review.py",
+          "symbol": "pending_review"
+        },
+        {
+          "file": "scripts/novel_ledger_core/control/pipeline/_commitack.py",
+          "symbol": "book_complete"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_story_review.py::test_next_requires_independent_volume_review_before_crossing",
+        "scripts/tests/test_story_review.py::test_review_rejects_missing_or_fabricated_semantic_evidence",
+        "scripts/tests/test_story_review.py::test_complete_requires_all_chapters_and_current_volume_endgame_review"
+      ]
+    },
+    {
+      "id": "context-on-demand",
+      "invariant_anchor": "上下文不设固定字数上限",
+      "tier": "prose",
+      "enforced_by": [
+        {
+          "file": "references/pack-contract.md",
+          "doc_marker": "已选内容完整进入工作包"
+        },
+        {
+          "file": "references/execution-architecture.md",
+          "doc_marker": "按当前角色组织任务相关材料"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_policy_conformance.py::test_skill_routes_reference_reads_by_task_without_loading_all",
+        "scripts/tests/test_policy_conformance.py::test_prose_gate_docs_carry_the_discipline"
+      ]
+    },
+    {
+      "id": "selected-context-materials-complete",
+      "invariant_anchor": "选中材料完整加载，不按字数裁剪",
+      "tier": "mechanism",
+      "enforced_by": [
+        {
+          "file": "scripts/novel_ledger_core/content/pack.py",
+          "symbol": "_format_kb_card"
+        },
+        {
+          "file": "scripts/novel_ledger_core/content/recall.py",
+          "symbol": "def recall"
+        },
+        {
+          "file": "scripts/novel_ledger_core/content/narrative_contract.py",
+          "symbol": "read_narrative_source"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_context_materials.py::test_long_relevant_kb_tail_is_found_and_kept_without_loading_unrelated_card",
+        "scripts/tests/test_context_materials.py::test_recall_keeps_complete_long_evidence_and_complete_matching_paragraph",
+        "scripts/tests/test_narrative_contract.py::test_source_section_loads_complete_large_subtree_and_defers_unrelated_history"
+      ]
+    }
+  ]
+}

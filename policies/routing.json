@@ -1,0 +1,501 @@
+{
+  "schema": "novel-ledger.routing.v1",
+  "note": "SKILL.md 路由节的机器可校验镜像：use_when 逐字锚定 SKILL.md 路由表措辞，references 集合与 SKILL.md 的 references 链接集合相等，commands 必须存在于 CLI 解析器。由 scripts/tests/test_policy_conformance.py 强制同步；改任何一侧先改 SKILL.md，再同步本表。",
+  "task_classes": [
+    {
+      "id": "hatch",
+      "use_when": "零输入或一句点子开新书，沿基础门和按需补充门选择并确认启动",
+      "references": [
+        "references/hatch-wizard.md",
+        "references/extend-contract.md"
+      ],
+      "commands": [
+        [
+          "book",
+          "hatch"
+        ],
+        [
+          "chapter",
+          "next"
+        ]
+      ]
+    },
+    {
+      "id": "writing-loop",
+      "use_when": "写章、阶段视图、worker 派发与成本纪律",
+      "references": [
+        "references/execution-architecture.md"
+      ],
+      "commands": [
+        [
+          "chapter",
+          "next"
+        ],
+        [
+          "chapter",
+          "precheck"
+        ],
+        [
+          "chapter",
+          "draft-submit"
+        ],
+        [
+          "chapter",
+          "polish-submit"
+        ],
+        [
+          "chapter",
+          "ack-read"
+        ],
+        [
+          "chapter",
+          "usage-record"
+        ],
+        [
+          "plan",
+          "extend"
+        ]
+      ]
+    },
+    {
+      "id": "plan-contract",
+      "use_when": "章拍 schema、字段档位与书级大纲合同",
+      "references": [
+        "references/plan-contract.md",
+        "references/extend-contract.md"
+      ],
+      "commands": [
+        [
+          "plan",
+          "validate"
+        ],
+        [
+          "plan",
+          "amend-contract"
+        ]
+      ]
+    },
+    {
+      "id": "extend-contract",
+      "use_when": "扩纲硬校验、卷合同、批次候选择优与编拍纪律",
+      "references": [
+        "references/extend-contract.md"
+      ],
+      "commands": [
+        [
+          "plan",
+          "extend"
+        ],
+        [
+          "plan",
+          "select-batch"
+        ],
+        [
+          "plan",
+          "rebudget"
+        ]
+      ]
+    },
+    {
+      "id": "pack-contract",
+      "use_when": "pack 结构、阶段视图与分层记忆",
+      "references": [
+        "references/pack-contract.md"
+      ],
+      "commands": [
+        [
+          "chapter",
+          "next"
+        ]
+      ]
+    },
+    {
+      "id": "context-read",
+      "use_when": "按当前角色、事件或疑点读取完整来源与卷纲",
+      "references": [
+        "references/pack-contract.md",
+        "references/sqlite-memory.md",
+        "references/extend-contract.md"
+      ],
+      "commands": [
+        [
+          "context",
+          "read"
+        ],
+        [
+          "plan",
+          "volume-outline"
+        ],
+        [
+          "memory",
+          "recall"
+        ]
+      ]
+    },
+    {
+      "id": "write-output",
+      "use_when": "state_delta 字段与 submit 输出契约",
+      "references": [
+        "references/write-output.md"
+      ],
+      "commands": [
+        [
+          "chapter",
+          "check-submit"
+        ],
+        [
+          "chapter",
+          "submit"
+        ],
+        [
+          "chapter",
+          "patch"
+        ]
+      ]
+    },
+    {
+      "id": "sqlite-memory",
+      "use_when": "全量持久化、旧项目迁移、导入导出与定向历史召回",
+      "references": [
+        "references/sqlite-memory.md"
+      ],
+      "commands": [
+        [
+          "database",
+          "migrate"
+        ],
+        [
+          "database",
+          "verify"
+        ],
+        [
+          "database",
+          "export"
+        ],
+        [
+          "database",
+          "backup"
+        ],
+        [
+          "database",
+          "import-source"
+        ],
+        [
+          "memory",
+          "recall"
+        ]
+      ]
+    },
+    {
+      "id": "state-contract",
+      "use_when": "HEAD、账本文件布局与文风记忆",
+      "references": [
+        "references/runtime-contract.md"
+      ],
+      "commands": [
+        [
+          "ledger",
+          "verify"
+        ]
+      ]
+    },
+    {
+      "id": "runtime-platform",
+      "use_when": "解释器探测与路径规则",
+      "references": [
+        "references/runtime-platform.md"
+      ],
+      "commands": []
+    },
+    {
+      "id": "status-contract",
+      "use_when": "status 只读输出与用量口径",
+      "references": [
+        "references/runtime-contract.md"
+      ],
+      "commands": [
+        [
+          "status"
+        ]
+      ]
+    },
+    {
+      "id": "pipeline-gates",
+      "use_when": "流水线行为、文风机检与回流分级",
+      "references": [
+        "references/pipeline-gates.md"
+      ],
+      "commands": [
+        [
+          "chapter",
+          "polish-submit"
+        ],
+        [
+          "chapter",
+          "precheck"
+        ]
+      ]
+    },
+    {
+      "id": "recovery",
+      "use_when": "写锁、崩溃恢复与 blocked 人三处",
+      "references": [
+        "references/recovery.md"
+      ],
+      "commands": [
+        [
+          "retry-authorize"
+        ],
+        [
+          "ledger",
+          "repair"
+        ],
+        [
+          "book",
+          "complete"
+        ]
+      ]
+    },
+    {
+      "id": "governance",
+      "use_when": "巡检、伏笔与关系治理、漂移信号",
+      "references": [
+        "references/governance.md"
+      ],
+      "commands": [
+        [
+          "book",
+          "audit"
+        ],
+        [
+          "book",
+          "calibrate"
+        ],
+        [
+          "hooks",
+          "audit"
+        ],
+        [
+          "hooks",
+          "close"
+        ],
+        [
+          "hooks",
+          "defer"
+        ],
+        [
+          "hooks",
+          "merge"
+        ],
+        [
+          "relations",
+          "rename"
+        ],
+        [
+          "relations",
+          "close"
+        ]
+      ]
+    },
+    {
+      "id": "quant",
+      "use_when": "数字口径对账与四步收口",
+      "references": [
+        "references/governance.md"
+      ],
+      "commands": [
+        [
+          "book",
+          "reconcile"
+        ],
+        [
+          "book",
+          "resync-baseline"
+        ]
+      ]
+    },
+    {
+      "id": "governance-dispatch",
+      "use_when": "角色边界、权限矩阵、派发模板、编辑宪法",
+      "references": [
+        "references/roles.md",
+        "references/dispatch.md",
+        "references/dispatch.md",
+        "references/roles.md"
+      ],
+      "commands": []
+    },
+    {
+      "id": "voice",
+      "use_when": "换风格、按阶段读手册",
+      "references": [
+        "references/voices/shijing.md",
+        "references/voices/shijing.content.md",
+        "references/voices/cinematic.md",
+        "references/voices/cinematic.content.md",
+        "references/voices/baimiao.md",
+        "references/voices/baimiao.content.md",
+        "references/voices/mystery.md",
+        "references/voices/mystery.content.md",
+        "references/voices/heroic.md",
+        "references/voices/heroic.content.md",
+        "references/voices/lyrical.md",
+        "references/voices/lyrical.content.md"
+      ],
+      "commands": [
+        [
+          "voice",
+          "apply"
+        ],
+        [
+          "voice",
+          "list"
+        ],
+        [
+          "kb",
+          "sync"
+        ]
+      ]
+    },
+    {
+      "id": "tension-craft",
+      "use_when": "编排章型、埋收节奏与量控",
+      "references": [
+        "references/craft/tension-payoff.md"
+      ],
+      "commands": [
+        [
+          "hooks",
+          "audit"
+        ],
+        [
+          "hooks",
+          "close"
+        ],
+        [
+          "hooks",
+          "defer"
+        ]
+      ]
+    },
+    {
+      "id": "character-voice",
+      "use_when": "规划角色声线、知识边界与成长后的说话变化",
+      "references": [
+        "references/craft/character-voice.md"
+      ],
+      "commands": []
+    },
+    {
+      "id": "reader-experience",
+      "use_when": "首读可理解性、章内回报与卷级连读复核",
+      "references": [
+        "references/craft/reader-experience.md"
+      ],
+      "commands": []
+    },
+    {
+      "id": "unattended",
+      "use_when": "默认会话内循环唤起子 agent 连写（主线程一直执行，不用定时器；批界默认关）；CLI supervisor 供跨断电存活，定时器接力兜底",
+      "references": [
+        "references/unattended.md",
+        "references/unattended-runner.md"
+      ],
+      "commands": [
+        [
+          "status"
+        ],
+        [
+          "run",
+          "validate-config"
+        ],
+        [
+          "run",
+          "once"
+        ],
+        [
+          "run",
+          "start"
+        ],
+        [
+          "run",
+          "status"
+        ],
+        [
+          "run",
+          "pause"
+        ],
+        [
+          "run",
+          "resume"
+        ],
+        [
+          "retry-authorize"
+        ],
+        [
+          "ledger",
+          "verify"
+        ],
+        [
+          "ledger",
+          "repair"
+        ],
+        [
+          "book",
+          "audit"
+        ],
+        [
+          "book",
+          "complete"
+        ],
+        [
+          "book",
+          "reopen"
+        ],
+        [
+          "chapter",
+          "usage-authorize"
+        ]
+      ]
+    },
+    {
+      "id": "story-review",
+      "use_when": "跨卷与终局必经复核、证据回执、正常完本及提前封笔",
+      "references": [
+        "references/story-review.md"
+      ],
+      "commands": [
+        [
+          "review",
+          "story-next"
+        ],
+        [
+          "review",
+          "story-submit"
+        ],
+        [
+          "review",
+          "story-evidence"
+        ],
+        [
+          "book",
+          "complete"
+        ],
+        [
+          "book",
+          "close-early"
+        ],
+        [
+          "plan",
+          "rebudget"
+        ]
+      ]
+    }
+  ],
+  "context_loading": {
+    "mode": "task_relevance",
+    "entry_anchor": "按任务只读当前需要的 reference",
+    "evidence_anchor": "选中材料完整加载，不按字数裁剪",
+    "supplement": "source_paths_and_directed_queries"
+  }
+}

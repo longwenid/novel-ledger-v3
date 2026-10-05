@@ -1,0 +1,181 @@
+{
+  "title": "",
+  "protagonist": "主角",
+  "volume_spine": "第一卷：主角要拿回被扣的凭据。",
+  "character_profiles": {
+    "主角": {
+      "background_register": "跑货的行商，先谈凭据、货期与实价",
+      "speech_habits": "问得短，常把话落到具体物件",
+      "under_pressure": "被逼急时反复确认期限，不突然出口成章",
+      "desire_and_mask": "想拿回凭据保住生计，却装作只是在讲规矩",
+      "sample_quote": "先看凭据，别的话待会儿说。"
+    },
+    "掌柜": {
+      "background_register": "老铺子的掌柜，熟悉赊账与人情称呼",
+      "speech_habits": "先讲条件，回答前留半句余地",
+      "under_pressure": "算不过账时改用具体数目挡住情绪",
+      "desire_and_mask": "要保住铺子的回款，同时掩饰自己已被催债",
+      "sample_quote": "账不是这么算的，你先坐下。"
+    }
+  },
+  "chapters": [
+    {
+      "chapter": 1,
+      "volume": 1,
+      "location": "市集",
+      "present": [
+        "主角",
+        "掌柜"
+      ],
+      "tags": [
+        "市集",
+        "凭据"
+      ],
+      "goal": "把被扣的凭据要回来",
+      "wound": "上一趟货出了岔子，赔不起",
+      "speech": [
+        "这事我担着",
+        "先看凭据"
+      ],
+      "knowledge_refs": ["reply-promise"],
+      "recap": "",
+      "beats": [
+        {
+          "id": "b1",
+          "required": true,
+          "text": "主角在柜台当面拒收改期，掌柜不让他把凭据拿走",
+          "must": "拒收"
+        },
+        {
+          "id": "b2",
+          "required": true,
+          "text": "凭据还扣在掌柜手里，两人为此来回争执，当场拿不走",
+          "must": "凭据"
+        },
+        {
+          "id": "b3",
+          "required": true,
+          "text": "有人来催下一趟期限，主角被夹在中间走不掉",
+          "must": "期限"
+        },
+        {
+          "id": "b4",
+          "required": true,
+          "text": "散场时掌柜丢下一句未了的话，明天还得来",
+          "must": "明天",
+          "effects": {
+            "facts": [
+              {
+                "who": "掌柜",
+                "text": "掌柜答应明早给答复",
+                "pin": false
+              }
+            ],
+            "hooks": [
+              {
+                "id": "h1",
+                "text": "掌柜明早的答复是否兑现",
+                "due": 2,
+                "status": "open"
+              }
+            ],
+            "knowledge": [
+              {
+                "who": "主角",
+                "topic_id": "reply-promise",
+                "claim": "掌柜答应明早给答复",
+                "stance": "believes",
+                "source": "掌柜当面承诺"
+              }
+            ]
+          }
+        },
+        {
+          "id": "b5",
+          "required": true,
+          "text": "第1章第5场：承接上一场余波的小过场，物件或口信落到具体人手上，留一个未完",
+          "must": "过场"
+        }
+      ]
+    },
+    {
+      "chapter": 2,
+      "volume": 1,
+      "location": "市集",
+      "present": [
+        "主角",
+        "掌柜"
+      ],
+      "tags": [
+        "市集",
+        "凭据"
+      ],
+      "goal": "接住掌柜明早的答复，把凭据拿到手",
+      "wound": "怕又被拖一天，货期等不起",
+      "speech": [
+        "先看凭据",
+        "话别撂半截"
+      ],
+      "knowledge_refs": ["reply-promise"],
+      "recap": "",
+      "beats": [
+        {
+          "id": "b1",
+          "required": true,
+          "text": "主角一早堵在柜台前，开口就问昨晚那句话算不算数",
+          "must": "算数"
+        },
+        {
+          "id": "b2",
+          "required": true,
+          "text": "掌柜先推说是气话，主角把上回的垫账当面摆出来，逼他不能赖",
+          "must": "垫账"
+        },
+        {
+          "id": "b3",
+          "required": true,
+          "text": "眼看赖不掉，掌柜起身从里屋把凭据取了出来",
+          "must": "凭据"
+        },
+        {
+          "id": "b4",
+          "required": true,
+          "text": "凭据到手，掌柜补一句下趟的活还得靠主角，气焰收了回去",
+          "must": "下趟",
+          "effects": {
+            "facts": [
+              {
+                "who": "主角",
+                "text": "主角拿回了被扣的凭据",
+                "pin": true
+              }
+            ],
+            "hooks": [
+              {
+                "id": "h1",
+                "text": "掌柜明早的答复是否兑现",
+                "due": 2,
+                "status": "paid"
+              }
+            ],
+            "knowledge": [
+              {
+                "who": "主角",
+                "topic_id": "reply-promise",
+                "claim": "掌柜已当面给出答复并交还凭据",
+                "stance": "knows",
+                "source": "掌柜当面交还凭据"
+              }
+            ]
+          }
+        },
+        {
+          "id": "b5",
+          "required": true,
+          "text": "第2章第5场：承接上一场余波的小过场，物件或口信落到具体人手上，留一个未完",
+          "must": "过场"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+# Ferry CLI 忽略文件配置
+# 以下文件/目录在打包时会被排除，不会上传到平台
+# 此文件存在时将完全替代内置默认规则，请勿随意删减
+
+# VCS & 环境变量
+.git
+.env
+.env.*
+
+# Ferry CLI 内部目录（安装元数据）
+**/.ferry/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js
+node_modules/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+.turbo/
+coverage/
+.nyc_output/
+
+# Rust / Java / Go / PHP
+target/
+.gradle/
+*.class
+vendor/
+dist/
+build/
+out/
+
+# 系统 & 编辑器
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 日志 & 临时
+*.log
+*.tmp
+
+# 本仓库验证产物与演示杂物（勿随 skill 分发）
+projects/
+share_clean_deck*.html
+.claude/
+.zcode/
+
+# 维护者专属目录（架构文档、历史报告、开发工具、压力测试转录）。
+# 它是"怎么造这个 skill"的档案，不是 skill 内容：用户拿到它只会多出上万行无关文档，
+# 而 agent 面无任何引用（SKILL.md 仅两处行内提及）。
+.dev/
+scripts/tests/
+Makefile
+pytest.ini
+.gitignore
