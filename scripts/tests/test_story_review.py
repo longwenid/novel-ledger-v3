@@ -12,7 +12,7 @@ from novel_ledger_core.control.pipeline import (ack_read, book_close_early, book
     chapter_next, stage_draft_submit, stage_polish_submit, submit_output)
 from novel_ledger_core.control.cli import main
 from novel_ledger_core.content.story_review import (pending_review, prepare_review, submit_review,
-    receipts, export_evidence)
+    receipts, export_evidence, REVIEW_EVIDENCE_DIMENSIONS)
 from novel_ledger_core.infra.store import BookStore
 from novel_ledger_core.infra.util import LedgerError, atomic_json, read_json, sha256_text
 
@@ -57,7 +57,11 @@ def write_chapter(store: BookStore) -> None:
 
 def review_output(store: BookStore) -> dict:
     view = read_json(store.staging_dir / "story-review-view.json")
-    return {"review_id": view["review_id"], "input_hash": view["input_hash"], "checks": [
+    return {"review_id": view["review_id"], "input_hash": view["input_hash"],
+            # 显式声明「本次看不到的证据维度」：空表表示逐项都核过了。
+            # 漏这个字段会被 story_review_dimensions_missing 拒收（见下面的用例）。
+            "unverifiable_dimensions": [],
+            "checks": [
         {"id": key, "status": "pass", "reason": "开篇选择、末篇收束留下了实际代价与承诺兑现证据。",
          "evidence": [{"chapter": view["first"], "quote": "决定放弃奖金去救掌柜。"},
                       {"chapter": view["through"], "quote": "也明白旧日承诺必须兑现。"}]}
@@ -103,6 +107,50 @@ def test_review_rejects_missing_or_fabricated_semantic_evidence(tmp_path, failur
     with pytest.raises(LedgerError):
         submit_review(store, output)
     assert receipts(store) == {}
+
+
+@pytest.mark.parametrize(
+    "mutation,code",
+    [
+        ("missing", "story_review_dimensions_missing"),
+        ("unknown", "story_review_dimensions_unknown"),
+        ("pass_with_gaps", "story_review_unverified_dimensions"),
+    ],
+)
+def test_review_must_declare_what_it_could_not_verify(tmp_path, mutation, code):
+    """「看不见」要显式报出来：漏声明、瞎声明、判 pass 却留缺口三种都不收。
+
+    跨段实体/数值一致性正是靠「审校没看见却判 pass」漏过去的，所以维度声明是契约而不是建议。
+    """
+    store = story_store(tmp_path, chapters=2)
+    write_chapter(store)
+    write_chapter(store)
+    prepare_review(store, pending_review(store, completing=True))
+    output = review_output(store)
+    if mutation == "missing":
+        output.pop("unverifiable_dimensions")
+    elif mutation == "unknown":
+        output["unverifiable_dimensions"] = ["something_not_declared"]
+    else:
+        output["unverifiable_dimensions"] = ["timeline"]
+    with pytest.raises(LedgerError) as raised:
+        submit_review(store, output)
+    assert raised.value.code == code
+    assert receipts(store) == {}
+
+
+def test_review_view_carries_evidence_dimensions_and_machine_leads(tmp_path):
+    """复核视图要给出：可声明的维度清单 + 机器扫出的待裁决线索（而不是只给结论）。"""
+    store = story_store(tmp_path, chapters=2)
+    write_chapter(store)
+    write_chapter(store)
+    prepare_review(store, pending_review(store, completing=True))
+    view = read_json(store.staging_dir / "story-review-view.json")
+    assert view["evidence_dimensions"] == list(REVIEW_EVIDENCE_DIMENSIONS)
+    leads = view["machine_consistency_hits"]
+    assert leads["available"] is True
+    assert leads["declared_fact_keys"] == 0  # 未声明取值域 → 只有形态类线索
+    assert "unverifiable_dimensions" in view["evidence_note"]
 
 
 def test_unverifiable_review_stops_then_text_revision_requires_fresh_review(tmp_path):

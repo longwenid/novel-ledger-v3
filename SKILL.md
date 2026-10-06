@@ -66,6 +66,12 @@ Windows / Git Bash 的解释器探测与路径规则见 [运行平台](reference
 - 返工最多两轮；单句禁词、台词和勘误优先 `chapter patch`，避免整链重跑。
 - findings 分为 `BLOCKER/WARNING/NIT/UNVERIFIABLE`；只有 BLOCKER 自动返工，其他留痕裁决；
   重大裁决写入 `book/editorial/decisions.jsonl`（`Ruling: 内容 — 依据 — 若错代价`）。
+- 同一事实全书只允许一个取值：项目按 `config.fact_keys` 声明取值域（`entity`/`number`/`date`/`set`/`count`
+  五类，规则见[事实登记表](references/fact-registry.md)），机检扫全书；同一实体两套称谓、同一数值键两个值、
+  同一时点两个年份、互斥集合两个成员、清单总数对不上都点名。确定性格式缺陷（重复章头、写作期分场标记、
+  成稿残留、引号体例混用或未闭合）在 `draft-submit`/`polish-submit` 就地判回正文；跨章事实冲突在
+  检查点停线，`book audit`/`book reconcile`/`book facts` 出待办，`book complete` 收为 blocker。
+  未声明取值域时全部事实探针恒空（默认零误报），`book audit` 出 `fact_declarations_missing` advisory。
 - 模型档位按 job：独立终审、策划与全书复核用最强档，执笔、润色、组装用标准档，机械单点用经济档。
 - 跨章记忆由脚本确定性滚层（近章摘要 → 阶段 → 卷 → 全书脊柱，不发起模型请求）；
   长线连续性按需读取 `memory_layers`、`historical_recall` 与相关历史正文，保留来源与完整证据。
@@ -103,7 +109,8 @@ Windows / Git Bash 的解释器探测与路径规则见 [运行平台](reference
 | status 字段 | status 只读输出与用量口径 | [运行态契约·status 节](references/runtime-contract.md) |
 | 机检与返工 | 流水线行为、文风机检与回流分级 | [pipeline-gates](references/pipeline-gates.md) |
 | 恢复与处置 | 写锁、崩溃恢复与 blocked 人三处 | [recovery](references/recovery.md) |
-| 审计治理 | 巡检、伏笔与关系治理、漂移信号 | [governance](references/governance.md) |
+| 审计治理 | 巡检、事实登记表、伏笔与关系治理、漂移信号 | [governance](references/governance.md) |
+| 事实登记 | 声明同一事实的取值域与五类 kind、格式闸与修复 SOP | [事实登记表](references/fact-registry.md) |
 | 量化口径 | 数字口径对账与四步收口 | [治理·量化口径节](references/governance.md) |
 | 治理与派发 | 角色边界、权限矩阵、派发模板、编辑宪法 | [roles（含编辑总宪法）](references/roles.md)、[派发手册](references/dispatch.md) |
 | 文风 | 换风格、按阶段读手册 | 见下方文风手册索引；按项目 `voice_id` 选择对应文风 |

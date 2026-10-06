@@ -89,6 +89,10 @@ canonical output 只写入数据库内已验收终稿。
   形状/证据不合法（`plot_finding_severity_invalid` / `plot_finding_missing_hint` /
   `plot_finding_quote_too_short` / `plot_finding_quote_not_in_prose` 等）→ 判**组装契约问题**，
   回 `await_assembly` 重跑。
+- **硬事实矛盾必须报 BLOCKER**：若本章正文的某个硬事实（人物称谓、年龄/数目/年份、方位、
+  互斥取值）与账本、正典或上游章节的已确立取值不一致，`severity` 必须记 `BLOCKER`
+  并附该句逐字 `quote`——这类矛盾不是"读感偏弱"，判成 `WARNING` 会被留痕放行，
+  正是跨章漂移最容易漏网的地方。同类检查的机器侧见[事实登记表](fact-registry.md)。
 
 **账本增量正文证据（`quote`）**：`facts` / `debts` / `hooks` / `relations` / `deaths` / `items` / `knowledge` 的每个语义条目
 应附 `quote`——从终稿逐字抄出支持该增量的原句，机器逐条验证子串；`delta_quote_not_in_prose` /

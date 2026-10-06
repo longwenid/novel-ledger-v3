@@ -15,7 +15,23 @@ from ..ledger.ledger import read_events
 
 SCHEMA = "novel-ledger.story-review.v1"
 MAX_SAMPLE_CHAPTERS = 5
+# 书级复核（scope=book）覆盖全书，抽样提到 8：跨段事实一致性最容易在首/中/末三段落差的
+# 地方露头，5 章在长篇里覆盖不到三段。卷审维持较小抽样（范围本来就只有一卷）。
+MAX_SAMPLE_CHAPTERS_BOOK = 8
 MAX_SUMMARIES = 24
+
+# 复核必须逐项声明「本次看不到的核验维度」。这是一份**结构**清单（不含任何作品内容），
+# 与 findings 的 `UNVERIFIABLE` 是同一纪律：把看不见的显式报出来，而不是安静判 pass。
+REVIEW_EVIDENCE_DIMENSIONS = (
+    "entity_names",
+    "numbers",
+    "dates",
+    "timeline",
+    "inventory",
+    "geography",
+    "knowledge",
+    "relations",
+)
 
 
 def _receipts_path(store: BookStore):
@@ -177,12 +193,51 @@ def pending_review(store: BookStore, *, completing: bool = False) -> dict[str, A
     return None
 
 
+def prepare_review_consistency(store: BookStore, first: int, through: int) -> dict[str, Any]:
+    """把机器一致性扫描的命中裁到本次复核范围内，随视图交给独立复核者当线索。
+
+    复核者的价值不是重跑机检，而是裁决机检给不出的判断（是不是同一主体的别名、
+    是同一场事件写两遍还是刻意的复现）。所以这里给的是**待裁决清单**，
+    不是结论；机检没声明取值域时本段为空。
+    """
+    from .consistency import run_consistency_audit
+
+    try:
+        result = run_consistency_audit(store)
+    except Exception:  # 复核视图不得因扫描失败而不可用
+        return {"available": False, "hits": [], "note": "consistency scan unavailable"}
+
+    def _in_range(item: dict[str, Any]) -> bool:
+        chapters = item.get("chapters")
+        if isinstance(chapters, list) and chapters:
+            return any(first <= int(ch) <= through for ch in chapters if isinstance(ch, int))
+        chapter = item.get("chapter")
+        return isinstance(chapter, int) and first <= chapter <= through
+
+    hits = [item for item in result["hits"] if _in_range(item)]
+    cross = [item for item in result["cross_chapter"] if _in_range(item)]
+    near = [item for item in result["near_duplicates"] if _in_range(item)]
+    return {
+        "available": True,
+        "declared_fact_keys": len(result["fact_keys"]),
+        "hits": (hits + cross)[:20],
+        "hit_count": len(hits) + len(cross),
+        "near_duplicates": near[:10],
+        "near_duplicate_count": len(near),
+        "note": (
+            "机器用项目声明的取值域扫出的待裁决项：每条都要在 judge 里落一个结论"
+            "（正文漂移 / 合法别名或刻意复现 / 证据不足）。"
+            "declared_fact_keys 为 0 说明该项目还没声明取值域，此时只有形态类线索。"
+        ),
+    }
+
+
 def prepare_review(store: BookStore, spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("blocked"):
         return ok(action="story_review_blocked", stop=True, chapter=spec["through"], review_id=spec["review_id"],
                   findings=spec["receipt"]["checks"], hint="repair the cited chapters or signed contract; the changed inputs require a fresh review")
     numbers = list(range(spec["first"], spec["through"] + 1))
-    selected = _sample(numbers, MAX_SAMPLE_CHAPTERS)
+    selected = _sample(numbers, MAX_SAMPLE_CHAPTERS_BOOK if spec["scope"] == "book" else MAX_SAMPLE_CHAPTERS)
     examples = []
     for number in selected:
         path = store.staging_dir / f"story-review-prose-{number:04d}.txt"
@@ -202,8 +257,10 @@ def prepare_review(store: BookStore, spec: dict[str, Any]) -> dict[str, Any]:
     chosen_previous = [previous[i] for i in _sample(list(range(len(previous))), MAX_SUMMARIES)] if previous else []
     view.update({"selected_prose": examples, "chapter_summaries": summaries,
                  "prior_volume_reviews": chosen_previous,
+                 "evidence_dimensions": list(REVIEW_EVIDENCE_DIMENSIONS),
+                 "machine_consistency_hits": prepare_review_consistency(store, spec["first"], spec["through"]),
                  "omitted": {"prose_chapters": len(numbers) - len(selected), "summaries": len(numbers) - len(summaries), "volume_review_details": len(previous) - len(chosen_previous)},
-                 "evidence_note": "Read all selected prose and the complete selected volume outline. Summaries locate history, they do not prove execution. Use memory recall, plan volume-outline --volume N, context read and review story-evidence to load additional relevant sources in full; mark unavailable evidence UNVERIFIABLE. Theme/relationship checks may explain author-approved absence, with prose evidence; do not invent genre quotas."})
+                 "evidence_note": "Read all selected prose and the complete selected volume outline. Summaries locate history, they do not prove execution. Use memory recall, plan volume-outline --volume N, context read and review story-evidence to load additional relevant sources in full; mark unavailable evidence UNVERIFIABLE. Machine consistency hits are pre-digested leads, not verdicts: rule on each and declare every evidence dimension you could not verify in output.unverifiable_dimensions. Theme/relationship checks may explain author-approved absence, with prose evidence; do not invent genre quotas."})
     view_path = store.staging_dir / "story-review-view.json"
     output_path = store.staging_dir / "story-review-output.json"
     atomic_json(view_path, view)
@@ -245,6 +302,29 @@ def submit_review(store: BookStore, output: dict[str, Any]) -> dict[str, Any]:
     passed = all(c["status"] == "pass" for c in checks)
     if passed and (spec["first"] not in seen_chapters or spec["through"] not in seen_chapters):
         raise LedgerError("story_review_evidence_distribution", "passing reviews need opening and ending prose evidence")
+    # 「看不见」必须显式报出来：复核者要逐项声明本次无法核验的证据维度（可为空表，
+    # 但不能省略）。判 pass 时却对某一维度根本没核验，是审稿最贵的错误——
+    # 跨段实体/数值一致性正是这样漏过去的。
+    dimensions = output.get("unverifiable_dimensions")
+    if not isinstance(dimensions, list):
+        raise LedgerError(
+            "story_review_dimensions_missing",
+            "declare output.unverifiable_dimensions (a list, [] when you verified every dimension)",
+            {"known_dimensions": list(REVIEW_EVIDENCE_DIMENSIONS)},
+        )
+    unknown = [str(item) for item in dimensions if str(item) not in REVIEW_EVIDENCE_DIMENSIONS]
+    if unknown:
+        raise LedgerError(
+            "story_review_dimensions_unknown",
+            "unverifiable_dimensions entries must come from the declared evidence dimensions",
+            {"unknown": unknown, "known_dimensions": list(REVIEW_EVIDENCE_DIMENSIONS)},
+        )
+    if passed and dimensions:
+        raise LedgerError(
+            "story_review_unverified_dimensions",
+            "a passing review cannot leave evidence dimensions unverified; mark the affected check UNVERIFIABLE instead",
+            {"unverifiable_dimensions": dimensions},
+        )
     state = receipts(store)
     previous = state.get(spec["review_id"])
     if isinstance(previous, dict) and previous.get("input_hash") == spec["input_hash"]:

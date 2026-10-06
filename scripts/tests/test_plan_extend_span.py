@@ -96,7 +96,16 @@ def _pass_story_review(store: BookStore) -> None:
         }
         for key in view["required_checks"]
     ]
-    res = submit_review(store, {"review_id": view["review_id"], "input_hash": view["input_hash"], "checks": checks})
+    res = submit_review(
+        store,
+        {
+            "review_id": view["review_id"],
+            "input_hash": view["input_hash"],
+            # 复核必须显式声明看不到的证据维度；逐维核过就写空表。
+            "unverifiable_dimensions": [],
+            "checks": checks,
+        },
+    )
     assert res["verdict"] == "pass", res
 
 

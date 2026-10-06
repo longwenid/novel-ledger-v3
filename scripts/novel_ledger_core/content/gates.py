@@ -192,6 +192,20 @@ def _location_conflict_issues(delta: dict[str, Any], pack: dict[str, Any]) -> li
     return issues
 
 
+def format_defect_issues(prose: str, *, chapter: int = 0, quote_style: str = "auto") -> list[dict[str, Any]]:
+    """成稿格式与体例机检（章节级硬闸）：章头重复/错号、写作期残留标记、引号体例。
+
+    这些是**确定性**缺陷：小说正文不会自然出现「第三场」「（本章完）」或同章两遍相同章头，
+    引号也不会自己配对不闭合。因此可以直接进提交闸门（判 fix_draft 改正文），
+    不需要人工 triage——而多稿缝合、草稿直通、跨稿拼接正是这类残留在长跑里必然出现的地方。
+    """
+    from .consistency import chapter_format_issues
+
+    if not isinstance(prose, str) or not prose.strip():
+        return []
+    return chapter_format_issues(prose, chapter=chapter, quote_style=quote_style)
+
+
 def validate_prose_anchors(prose: str, pack: dict[str, Any]) -> list[dict[str, Any]]:
     """对一段正文跑“内容锚点”机检：beats/must、连续性、glossary。
 

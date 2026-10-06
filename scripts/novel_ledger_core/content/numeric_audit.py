@@ -325,8 +325,92 @@ def propose_quant_keys(cards: list[dict[str, Any]], *, card_prefix: str = "量�
     }
 
 
-# —— 场景地图兜底扫描：注册表无关的空间口径漂移 ——
-# 地点簿（state_delta.locations）是主防线：申报即比较、replaces 即留痕。本探针是
+# —— 事实登记表候选派生（只建议，不自动写入） ——
+
+# 正典卡里带数值/年份/称谓的行：这些是「书级事实」的常见发生地。
+_FACT_NUMBER_LINE = re.compile(
+    r"[^\n]*?([\u4e00-\u9fff]{1,6})[^\n]{0,6}?(" + _NUM + r"{1,8})\s*([^\s\d\u4e00-\u9fff]{0,2})([\u4e00-\u9fff])"
+)
+_FACT_YEAR_LINE = re.compile(r"[^\n]*?([\u4e00-\u9fff]{1,6})[^\n]{0,6}?([\u4e00-\u9fff\d]{2,6})\s*年")
+
+
+def propose_fact_keys(cards: list[dict[str, Any]]) -> dict[str, Any]:
+    """从正典卡派生**候选** `fact_keys` 条目，供总编辑勾选后落 config。
+
+    只做建议、不自动写入：哪些事实必须全书单值（角色年龄、批次数目、年份口径、
+    某一行当的固定说法）是编辑判断。但把"空白页"变成"候选清单"能消除"忘了填"——
+    与 `propose_quant_keys` 同款机制。返回的键名是占位 slug，由总编辑改成项目口径名。
+    """
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for card in cards or []:
+        if not isinstance(card, dict):
+            continue
+        body = str(card.get("body") or "")
+        for line in body.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            # 年式先扫：命中的行不再出 number 候选，否则「八八年」会同时派生
+            # number(canonical=8) 与 date(canonical=1988) 两条互相矛盾的候选。
+            year_spans: list[tuple[int, int]] = []
+            for match in _FACT_YEAR_LINE.finditer(stripped):
+                key_name, token = match.groups()
+                # 年式常按字面读（「八八」= 1988）：走 consistency 的纪年归一（含世纪基准），
+                # 与 date_year_conflicts 的解析口径同源，避免候选值本身就是错的。
+                from .consistency import _resolve_era
+
+                key_name = key_name.rstrip("共合约拢总计")
+                year = _resolve_era(token, {"base": 1900})
+                if year is None:
+                    continue
+                year_spans.append(match.span())
+                ident = (key_name, f"{year}年")
+                if ident in seen:
+                    continue
+                seen.add(ident)
+                candidates.append(
+                    {
+                        "suggested_key": key_name,
+                        "kind": "date",
+                        "observe": "年",
+                        "canonical": year,
+                        "source": str(card.get("id") or ""),
+                    }
+                )
+            for match in _FACT_NUMBER_LINE.finditer(stripped):
+                if any(start <= match.start() < end for start, end in year_spans):
+                    continue
+                key_name, token, _mid, unit = match.groups()
+                value = parse_number(token)
+                if value is None:
+                    continue
+                key_name = key_name.rstrip("共合约拢总计")
+                ident = (key_name, f"{value}{unit}")
+                if ident in seen:
+                    continue
+                seen.add(ident)
+                candidates.append(
+                    {
+                        "suggested_key": key_name,
+                        "kind": "number",
+                        "observe": unit,
+                        "canonical": value,
+                        "source": str(card.get("id") or ""),
+                    }
+                )
+    return {
+        "candidates": candidates[:40],
+        "hint": (
+            "候选只作起点：把**全书必须单值**的事实钉进 `config.fact_keys`（角色年龄、"
+            "批次数目、年份口径、固定称谓）。写法见 references/fact-registry.md："
+            "每条给 kind + canonical，并给 observe（键）或 suffixes（后缀族）。"
+            "允许同值异写放进 allow/aliases；留空则事实闸门全部空转。"
+        ),
+    }
+
+
+# —— 场景地图兜底扫描：注册表无关的空间口径漂移 ——# 地点簿（state_delta.locations）是主防线：申报即比较、replaces 即留痕。本探针是
 # 收口对账的兜底——旧书没建注册表、或正文提及了从未申报的属性，跨章/章内同一地点
 # 出现互斥楼层或门牌时点名。地点名来自注册表（name/aliases）或项目 config.spatial_keys，
 # 本函数不内置任何地点词，未命中键时恒返回空。

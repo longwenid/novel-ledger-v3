@@ -192,6 +192,7 @@ __all__ = [
     '_content_numeric_audit',
     'reconcile_book',
     'calibrate_book',
+    'book_facts',
     '_derived_name_drift',
     'audit_book',
     '_PACING_FLAT_THRESHOLD',

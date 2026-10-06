@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-from ...content.gates import (blocking_plot_findings, expected_delta_duplicate_warnings, collect_plot_findings, foreign_fragment_issues, plot_findings_issues, recheck_beat_anchor_blockers, validate_prose_anchors, validate_write_output, word_count_warnings)
+from ...content.gates import (blocking_plot_findings, expected_delta_duplicate_warnings, collect_plot_findings, foreign_fragment_issues, format_defect_issues, plot_findings_issues, recheck_beat_anchor_blockers, validate_prose_anchors, validate_write_output, word_count_warnings)
 from ...content.pack import (inputs_fingerprint)
 from ...content.style_check import (check_style_hard, style_direction)
 from ...infra.store import (PHASE_AWAIT_ASSEMBLY, PHASE_AWAIT_DRAFT, PHASE_AWAIT_POLISH, PHASE_BLOCKED, PHASE_SUBMITTED, BookStore)
@@ -146,6 +146,29 @@ def stage_draft_submit(store: BookStore) -> dict[str, Any]:
                 ),
             )
     store.accept_stage_text(path, draft_text)
+    # 成稿格式前置闸：与字数带、外文残片同 philosophy——在最便宜的 draft 点就地拦下。
+    # 只写作模式（polish=off）下草稿即终稿，这道闸是格式残留唯一还能被拦住的地方，
+    # 因此不能只挂在 assemble 的 submit 上。
+    format_issues = format_defect_issues(
+        draft_text,
+        chapter=chapter,
+        quote_style=str(store.load_config().get("quote_style") or "auto"),
+    )
+    if format_issues:
+        _log_quality(store, chapter, "draft_format", verdict="fail", issues=format_issues[:5])
+        return ok(
+            verdict="draft_rejected",
+            phase=PHASE_AWAIT_DRAFT,
+            chapter=chapter,
+            violations=format_issues,
+            hint=(
+                "the draft carries deterministic format/typography defects (duplicated chapter "
+                "header, writing-stage markers, unpaired or mixed quote systems); phase stays "
+                "await_draft — fix the same staging file in place (it is kept), then run "
+                "`chapter draft-submit` again. Lock the book's quote system with "
+                "`config set --key quote_style --value <cn_double|cn_corner|zh_book|ascii>`."
+            ),
+        )
     if _polish_disabled(store):
         # 只写作模式（config.polish=off）：草稿即终稿。字数带是章合同仍在 draft 收口；
         # 文风机检整体退出写链（要自查用 `chapter precheck`，只读不拦线），润色相位跳过，
@@ -226,6 +249,42 @@ def stage_polish_submit(store: BookStore) -> dict[str, Any]:
     # 省掉「组装 → 机检失败 → 回 draft 重写 → 重润 → 重组装」的整条返工链。
     # 注意判据取 canonical pack（视图是它的派生切片，视图裁剪不影响本机检）。
     canon_pack = stable_read_json(store.current_pack_path)
+    # 格式/体例闸同理：润色会在场景级重构里重排标点与引号，本相位就地拦、只回重润。
+    format_issues = format_defect_issues(
+        polished_text,
+        chapter=chapter,
+        quote_style=str(store.load_config().get("quote_style") or "auto"),
+    )
+    if format_issues:
+        draft_path = store.draft_text_path(chapter)
+        draft_text = draft_path.read_text(encoding="utf-8") if draft_path.exists() else ""
+        draft_codes = {
+            str(issue.get("code") or "")
+            for issue in format_defect_issues(
+                draft_text,
+                chapter=chapter,
+                quote_style=str(store.load_config().get("quote_style") or "auto"),
+            )
+        }
+        polish_only = [
+            issue for issue in format_issues if str(issue.get("code") or "") not in draft_codes
+        ]
+        if polish_only:
+            _log_quality(store, chapter, "polish_format", verdict="fail", issues=polish_only[:5])
+            return ok(
+                verdict="polish_rejected",
+                phase=PHASE_AWAIT_POLISH,
+                chapter=chapter,
+                polished_output_path=str(path),
+                polished_kept=True,
+                violations=polish_only,
+                hint=(
+                    "the polished prose introduced format/typography defects (mixed or unpaired "
+                    "quote systems, duplicated chapter header, writing-stage markers); the file is "
+                    "KEPT at polished_output_path — fix it in place, then run `chapter "
+                    "polish-submit` again."
+                ),
+            )
     anchor_issues = validate_prose_anchors(polished_text, canon_pack)
     if anchor_issues:
         # 只拦**润色自己改坏的**锚点，按条归属、不越权替 draft 收口：
@@ -338,6 +397,15 @@ def _submission_review(
     # 混进正文只能靠 BLOCKER 偶然暴露）。确需拉丁文的书 config set foreign_fragment_gate=allow。
     if str(cfg.get("foreign_fragment_gate") or "block") != "allow":
         issues.extend(foreign_fragment_issues(polished))
+    # 成稿格式与体例：章头重复/错号、写作期残留标记、引号体例混用或未闭合。
+    # 同样是确定性缺陷，进正文返工路（不在 _ASSEMBLY_ONLY_ISSUES 里，故判 fix_draft）。
+    issues.extend(
+        format_defect_issues(
+            polished,
+            chapter=int(store.read_head().get("chapter") or 0),
+            quote_style=str(cfg.get("quote_style") or "auto"),
+        )
+    )
     issues.extend(plot_findings_issues(output, polished, required=int(cfg.get("review_contract_version", 2)) >= 2))
     plot_issues = collect_plot_findings(output) if plot_self_check_enabled else []
     warnings = word_count_warnings(output, pack, prose=polished)

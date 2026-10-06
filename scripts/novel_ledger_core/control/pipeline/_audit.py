@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 from ...content.reviews import (review_summary)
+from ...content.consistency import (run_consistency_audit)
 from ...ledger.ledger import (coerce_due, load_snapshot, read_events)
 from ...infra.store import (PHASE_IDLE, BookStore)
 from ...infra.util import (LedgerError, atomic_json, chinese_word_count, ok, read_json, sha256_text)
@@ -78,7 +79,8 @@ def reconcile_book(store: BookStore) -> dict[str, Any]:
     - numeric：句内枚举求和不等（可定的算术错）、项目 quant_keys 同键双值；
     - derived：meta/summaries 里的银价数词在正文缺席（旧值残留在派生件）；
     - canon：正典在某章 commit 后被改（canon_drift）；
-    - glossary：禁用旧写法仍在正文中。
+    - glossary：禁用旧写法仍在正文中；
+    - fact：取值域声明（`fact_keys`）命中、跨章同键双值、章节格式与体例、跨章近重复段落。
 
     只报事实与位置，不判定返工范围；裁决权在总编辑。全部类别为空即 `clean=true`。
     """
@@ -153,6 +155,9 @@ def reconcile_book(store: BookStore) -> dict[str, Any]:
         [(int(cf.stem.split("-")[1]), cf.read_text(encoding="utf-8")) for cf in chapters],
         spatial_keys,
     )
+    # 事实取值域与跨章形态：取值全部来自项目声明，未声明时恒空（默认零误报）。
+    consistency = run_consistency_audit(store)
+    fact_issues = list(consistency["hits"]) + list(consistency["cross_chapter"])
     categories = {
         "ledger_quotes": quote_orphans,
         "numeric": numeric,
@@ -160,6 +165,9 @@ def reconcile_book(store: BookStore) -> dict[str, Any]:
         "canon": [canon] if canon.get("changed") else [],
         "glossary": glossary_issues,
         "spatial": spatial,
+        "fact": fact_issues,
+        "chapter_format": consistency["chapter_format"],
+        "near_duplicates": consistency["near_duplicates"],
     }
     counts = {name: len(items) for name, items in categories.items()}
     clean = all(count == 0 for count in counts.values())
@@ -180,6 +188,11 @@ def reconcile_book(store: BookStore) -> dict[str, Any]:
         canon=canon,
         glossary=glossary_issues,
         spatial=spatial,
+        fact=fact_issues,
+        chapter_format=consistency["chapter_format"],
+        near_duplicates=consistency["near_duplicates"],
+        repeated_phrases=consistency["repeated_phrases"],
+        weak_declarations=consistency["weak_declarations"],
         chapters_to_fix=sorted(by_chapter, key=lambda k: (not k.startswith("ch"), k)),
         quant_keys=quant_keys,
         hint=(
@@ -187,8 +200,30 @@ def reconcile_book(store: BookStore) -> dict[str, Any]:
             "否则按 chapters_to_fix 逐章回改（先账本后正文），改完重跑 book reconcile 至 clean=true。"
             "spatial 是场景地图兜底扫描：同一地点出现互斥楼层/门牌；"
             "正文为准则用 chapter patch 修旧章并在组装申报 replaces，注册表为准则修当章正文。"
+            "fact 是取值域声明（config.fact_keys）命中与跨章同键双值；"
+            "chapter_format 是章头/残留标记/引号体例；near_duplicates 是跨章近重复叙述（改一处或留裁决）。"
         ),
     )
+
+
+def book_facts(store: BookStore) -> dict[str, Any]:
+    """书级事实对账（只读）：取值域命中、跨章同键双值、章节格式、近重复、高频片段。
+
+    与 `book audit` / `book reconcile` 共用同一内核（`content/consistency.py`），
+    但把结果单独摆出来，供总编辑在批级/卷级/终局收口时按 key 逐条裁决。
+    单章阶段禁用（与 `book reconcile` 同规）：章内写者不需要整书视野，也不该为它付扫描成本。
+    """
+    result = run_consistency_audit(store)
+    hint = (
+        "fact_keys 为空时全部事实探针恒空——先按 references/fact-registry.md 声明取值域。"
+        "每条 hit 的 key/canonical/observed/chapter/excerpt 可直接定位到原文；"
+        "定权威值后用 chapter patch 定点替换，改完重跑本命令至 hits 为空。"
+    )
+    if not result["fact_keys"]:
+        hint = "config.fact_keys 是空的：事实一致性闸门全部空转。先跑 book calibrate 取候选。" + hint
+    elif result["weak_declarations"]:
+        hint = "有条目缺少 canonical 或观测模式（observe/key/suffixes），已在 weak_declarations 点名。" + hint
+    return ok(action="book_facts", hint=hint, **result)
 
 
 def calibrate_book(store: BookStore) -> dict[str, Any]:
@@ -201,12 +236,13 @@ def calibrate_book(store: BookStore) -> dict[str, Any]:
     取舍是编辑判断，自动写入会把不合适的键（一章两笔的「本利」）或会误伤真值的短词放进去。
     """
     from ...content.extract import propose_glossary_candidates
-    from ...content.numeric_audit import propose_quant_keys
+    from ...content.numeric_audit import propose_fact_keys, propose_quant_keys
 
     cards = store.load_kb()
     proposal = propose_quant_keys(cards)
     glossary = propose_glossary_candidates(cards)
     cfg = store.load_config()
+    facts = propose_fact_keys(cards)
     return ok(
         action="book_calibrate",
         current_quant_keys=[str(k) for k in (cfg.get("quant_keys") or [])],
@@ -217,6 +253,9 @@ def calibrate_book(store: BookStore) -> dict[str, Any]:
         glossary_candidates=glossary["candidates"],
         glossary_ban_bullets=glossary["ban_bullets"],
         glossary_hint=glossary["hint"],
+        current_fact_keys=sorted(str(k) for k in (cfg.get("fact_keys") or {})),
+        fact_keys_candidates=facts["candidates"],
+        fact_keys_hint=facts["hint"],
     )
 
 
@@ -291,12 +330,24 @@ def audit_book(store: BookStore) -> dict[str, Any]:
         open_sq = prose.count("“")
         close_sq = prose.count("”")
         ascii_q = prose.count("\"")
-        if open_sq != close_sq or ascii_q % 2 != 0:
+        # 四套体例（“”/「」/『』/直引号）逐一查配对：只查弯引号会漏掉「」与『』，
+        # 而多稿缝合的典型形态正是不同稿各用一套、谁也不闭合。
+        unpaired_styles = [
+            name
+            for name, (left, right) in (
+                ("cn_double", ("“", "”")),
+                ("cn_corner", ("「", "」")),
+                ("zh_book", ("『", "』")),
+            )
+            if prose.count(left) != prose.count(right)
+        ]
+        if open_sq != close_sq or ascii_q % 2 != 0 or unpaired_styles:
             quote_issues.append({
                 "chapter": ch_num,
                 "open_smart": open_sq,
                 "close_smart": close_sq,
                 "ascii_quotes": ascii_q,
+                "unpaired_styles": unpaired_styles,
             })
 
         # 术语表检查（仅当项目配置了 glossary 才生效）
@@ -355,6 +406,21 @@ def audit_book(store: BookStore) -> dict[str, Any]:
     snap = load_snapshot(store)
     plan = store.load_plan()
     numeric_issues, derived_drift = _content_numeric_audit(store, chapters, cfg)
+    consistency = run_consistency_audit(store)
+    fact_issues = list(consistency["hits"]) + list(consistency["cross_chapter"])
+    fact_keys = consistency["fact_keys"]
+    fact_declarations_missing = (
+        {
+            "code": "fact_declarations_missing",
+            "advisory": (
+                "`config.fact_keys` 是空的：书级事实一致性闸门（同一事实两套取值、"
+                "跨章同键双值）**全部空转**。先跑 `book calibrate` 取候选，按 "
+                "references/fact-registry.md 声明取值域。"
+            ),
+        }
+        if not fact_keys
+        else None
+    )
     derived_name_drift = _derived_name_drift(store, chapters, snap)
     active_hooks = [
         h for h in (snap.get("hooks") or [])
@@ -400,6 +466,15 @@ def audit_book(store: BookStore) -> dict[str, Any]:
         ledger_hygiene_issues=ledger_res.get("hygiene_issues") or [],
         numeric_issues=numeric_issues,
         numeric_issue_count=len(numeric_issues),
+        fact_issues=fact_issues,
+        fact_issue_count=len(fact_issues),
+        fact_keys_declared=sorted(fact_keys),
+        fact_declarations_missing=fact_declarations_missing,
+        chapter_format=consistency["chapter_format"],
+        chapter_format_count=len(consistency["chapter_format"]),
+        near_duplicate_passages=consistency["near_duplicates"],
+        near_duplicate_count=len(consistency["near_duplicates"]),
+        repeated_phrases=consistency["repeated_phrases"],
         derived_drift=derived_drift,
         derived_drift_count=len(derived_drift),
         derived_name_drift=derived_name_drift,
@@ -1208,6 +1283,7 @@ __all__ = [
     '_content_numeric_audit',
     'reconcile_book',
     'calibrate_book',
+    'book_facts',
     '_derived_name_drift',
     'audit_book',
     '_PACING_FLAT_THRESHOLD',

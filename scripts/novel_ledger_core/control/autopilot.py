@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..content.hierarchical_memory import load_hierarchical_memory
+from ..content.consistency import run_consistency_audit
 from ..infra.store import BookStore, _volume_label, volume_entry_for
 from ..infra.util import (
     LedgerError, atomic_json, atomic_text, canonical_json,
@@ -558,6 +559,55 @@ def _checkpoint_report(
         "blockers": blockers,
         "advisories": advisories,
     }
+    # 跨章事实一致性：硬事实冲突（同一键出现互斥取值）进 blockers 停线等人裁决；
+    # 形态类（近重复段落、高频片段、格式体例）进 advisories——它们是判断项不是错误项，
+    # 由总编辑按 references/fact-registry.md 决定删一处、改写法还是留裁决。
+    # 事实登记表为空时本段恒空，不影响既有项目。
+    try:
+        consistency = run_consistency_audit(store)
+        hard_facts = list(consistency["hits"]) + list(consistency["cross_chapter"])
+        consistency_view = {
+            "fact_keys": len(consistency["fact_keys"]),
+            "hits": hard_facts[:CHECKPOINT_ASSET_IDS],
+            "hit_count": len(hard_facts),
+            "chapter_format": consistency["chapter_format"][:CHECKPOINT_ASSET_IDS],
+            "chapter_format_count": len(consistency["chapter_format"]),
+            "near_duplicates": consistency["near_duplicates"][:CHECKPOINT_ASSET_IDS],
+            "near_duplicate_count": len(consistency["near_duplicates"]),
+            "repeated_phrases": consistency["repeated_phrases"][:CHECKPOINT_ASSET_IDS],
+        }
+        report["continuity"] = consistency_view
+        if hard_facts:
+            blockers.append(
+                {
+                    "code": "fact_value_conflict",
+                    "count": len(hard_facts),
+                    "keys": sorted({str(item.get("key") or "") for item in hard_facts}),
+                    "chapters": sorted(
+                        {
+                            int(item["chapter"])
+                            for item in hard_facts
+                            if isinstance(item.get("chapter"), int)
+                        }
+                    )[:CHECKPOINT_ASSET_IDS],
+                }
+            )
+        if consistency["chapter_format"]:
+            advisories.append(
+                {"code": "chapter_format_drift", "count": len(consistency["chapter_format"])}
+            )
+        if consistency["near_duplicates"]:
+            advisories.append(
+                {"code": "near_duplicate_passages", "count": len(consistency["near_duplicates"])}
+            )
+        if consistency["repeated_phrases"]:
+            advisories.append(
+                {"code": "repeated_phrases", "count": len(consistency["repeated_phrases"])}
+            )
+        if not consistency["fact_keys"]:
+            advisories.append({"code": "fact_declarations_missing"})
+    except LedgerError as exc:
+        advisories.append({"code": "consistency_scan_failed", "detail": str(exc)[:160]})
     if "volume" in kinds:
         current_volume = _volume_label((planned.get(chapter) or {}).get("volume", 1))
         next_volume = _volume_label((planned.get(chapter + 1) or {}).get("volume", 1))
@@ -662,6 +712,7 @@ def _completion_audit_blockers(audit: dict[str, Any]) -> list[dict[str, Any]]:
         "quote_issues", "glossary_issues", "hash_mismatch_chapters", "seam_issues",
         "ledger_hygiene_issues", "ledger_quote_invalid", "numeric_issues",
         "derived_drift", "derived_name_drift", "unresolved_long_term_commitments", "patch_review_pending",
+        "fact_issues", "chapter_format",
     ):
         values = audit.get(field) or []
         if values:

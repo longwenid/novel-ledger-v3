@@ -258,7 +258,7 @@
     },
     {
       "id": "governance",
-      "use_when": "巡检、伏笔与关系治理、漂移信号",
+      "use_when": "巡检、事实登记表、伏笔与关系治理、漂移信号",
       "references": [
         "references/governance.md"
       ],
@@ -294,6 +294,31 @@
         [
           "relations",
           "close"
+        ]
+      ]
+    },
+    {
+      "id": "fact-registry",
+      "use_when": "声明同一事实的取值域与五类 kind、格式闸与修复 SOP",
+      "references": [
+        "references/fact-registry.md"
+      ],
+      "commands": [
+        [
+          "book",
+          "facts"
+        ],
+        [
+          "book",
+          "audit"
+        ],
+        [
+          "book",
+          "reconcile"
+        ],
+        [
+          "chapter",
+          "patch"
         ]
       ]
     },

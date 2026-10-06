@@ -1,17 +1,26 @@
 # 巡检与治理（含量化口径）
 
-两部分：① book audit、正典同步、glossary 防线、伏笔与关系治理、内容漂移四闸；② 量化口径清单与四步收口 SOP。
+两部分：① book audit、正典同步、glossary 防线、事实登记表、伏笔与关系治理、内容漂移五闸；② 量化口径清单与四步收口 SOP。
 
 <!-- 一、巡检、基线自愈与伏笔治理 -->
 
-book audit、正典同步、glossary 三层防线、伏笔与关系治理、反 AI 矩阵、内容漂移四闸。口径对账见本文第二部分「量化口径」。
+book audit、正典同步、glossary 三层防线、事实登记表、伏笔与关系治理、反 AI 矩阵、内容漂移五闸。口径对账见本文第二部分「量化口径」。
 ## 巡检、基线自愈与伏笔治理
 
-- **全书审计（`book audit`）**：全量排查字数、标点闭合、专有名词归一化（glossary）、哈希基线失配、失效 quotes、章首尾复读及账本一致性；另返回 `quality_summary`——每章情节自检/机器硬红线/submit 结果留痕（`book/run/quality.jsonl`）汇总。另出**内容漂移**信号，见下。
+- **全书审计（`book audit`）**：全量排查字数、标点闭合、专有名词归一化（glossary）、哈希基线失配、失效 quotes、章首尾复读及账本一致性；另出**事实一致性**信号（`fact_issues` / `chapter_format` / `near_duplicate_passages` / `repeated_phrases`，见[事实登记表](fact-registry.md)）与 `quality_summary`——每章情节自检/机器硬红线/submit 结果留痕（`book/run/quality.jsonl`）汇总。另出**内容漂移**信号，见下。
 - **正典源同步（`canon_source_drift`）**：`canon_fingerprint()` 读的是**编译产物** `cards.json`，所以直接改 `book/kb/canon/**` 而不跑 `kb sync` 时，指纹一字不变、`canon_drift` 不响——运行时会一直按**旧正典**工作，全程静默。为此 `kb sync` 会把正典**源目录**的指纹记进 cards.json（`source_fingerprint`），`book audit` 报 `canon_source_drift` 比对二者；源目录整体丢失也按漂移告警。同步采用 fail-closed：不可读/损坏的 JSON/YAML、没有可扫描文件或零张硬卡时直接失败，并保留上一份有效 `cards.json`，不会用空库覆盖。旧编译产物没有源指纹时返回 `available: false`，不误报。改完正典记得 `kb sync`。
 - **基线自愈（`book resync-baseline`）**：外部手改正文或批量格式化后，一键重算全书 SHA256，自动对齐 `meta.json` 与 `acks/**/*.json`，并从当前正文中智能自愈失效 quotes，恢复可信基线。
 - **专有名词归一化（`config.glossary`）**：在 `config.json` 中配置术语映射（如 `{"旧写法": "规范写法"}`），提交机检自动拦截被禁用的旧词，确保全书用词严格统一。**它不是释义词典**：值必须是可直接替换的规范词串——把「词条→释义」填进去会让键（往往是正典词）被当违禁词全书误拦。**三层防线**：① hatch 在开书时拒绝「词条→释义」形状与撞主线/卷脊的条目；② 装配期 `glossary_self_conflict` 硬拒——禁用串命中同包拍点 must/文本、卷脊或世界脊柱即不装包（写手不可能同时满足"必须产出"与"不得使用"）；③ 机检对疑似误用条目跳过拦截、任务书渲染同规跳过（不教唆写手避开正典词），`book audit` 的 `glossary_misuse` 逐条点名指路修正。**数字口径也走这里**——把"与口径冲突的旧写法"作为被禁词、规范写法作为值，跨章数字漂移就能在提交时被拦，见下。
   **产出方是总编**：`book calibrate` 从正典「硬禁则」里提取被点名成具体词串的条目，给出 `glossary_candidates` 与 `glossary_ban_bullets` 供总编辑裁决（只建议、不自动写入——够长能限定语境的才钉，通用短词会误伤真值）。正典里有硬禁条目而 `config.glossary` 为空时，`book audit` 的 `glossary_coverage.advisory` 会明说"三处闸门全部空转"并指路 `book calibrate`，把"建了表没人填"变成可见项。
+- **书级事实登记（`config.fact_keys` / `book facts`）**：`glossary` 拦的是你**猜到**的那一个错词；
+  它拦不住「另一个从没见过的称谓」「同一个数字的另一个值」。事实登记表声明的是**取值域**：
+  同一实体称谓、同一数值键、同一时点年份、互斥集合成员、同一单位的清单总数，全书各只允许一个取值。
+  观测与判据全在 `content/consistency.py`（题材无关），取值全部由项目声明；`fact_keys` 留空时
+  全部探针恒空输出（`book audit` 的 `fact_declarations_missing` 会点名"闸门全部空转"并指路
+  `book calibrate` 取候选）。跨章同键双值另出 `cross_chapter_key_conflict`。命中在
+  `chapter draft-submit` / `polish-submit` / `submit`（格式类当场回正文）、`run checkpoint`
+  （硬事实冲突进 blockers 停线）、`book audit` / `book reconcile` / `book facts`（advisory 待办）、
+  `book complete`（收为 blocker）四处可见。写法、五种 kind 与修复 SOP 见[事实登记表](fact-registry.md)。
 - **伏笔生命周期治理（`hooks audit / close / defer / merge`）**：
   - `hooks audit`：输出活跃伏笔数、逾期分布（`overdue_count`）与健康度；
   - `hooks close --id <id> --reason <why>`：主动结案随大地图转移或自然消散的僵尸伏笔；
@@ -76,7 +85,7 @@ book audit、正典同步、glossary 三层防线、伏笔与关系治理、反 
     无引介/自报家门却在对白中直接直呼大名）。
   - 人物反应、生活细节和幽默要由当场处境支撑，不为制造风格标签硬添动作、数字或笑点。
 
-### 内容漂移四闸（结构一致 ≠ 值正确）
+### 内容漂移五闸（结构一致 ≠ 值正确）
 
 `ledger verify` 只证明"事件重放 == 快照"，`book audit` 的哈希/标点检查只证明"正文自洽"。
 两者都**看不见**一类最隐蔽的长篇缺陷：账本里的值（金额、状态）与正文对不上——正文被整体
@@ -88,6 +97,9 @@ book audit、正典同步、glossary 三层防线、伏笔与关系治理、反 
 | `hygiene_issues` | `ledger verify` | 同一主体被不同 id 重复登记（`duplicate_id_stem`）、同一笔债务被多次销案（`terminal_state_repeated`） | advisory |
 | `canon_drift` | `book audit` | commit 时把正典指纹（`canon_sha`）记进事件；当前指纹与最近一次 commit 不同 = 正典被改过，`since_chapter` 指明自哪章起可能按旧正典 | advisory |
 | `numeric_issues` / `derived_drift` | `book audit` + `book reconcile` | ①`enum_sum_mismatch`：句内「A、B、C……拢共 D」加了不等于 D；②`algebraic_flow_mismatch`：句内「原有 A、花去 B、还剩 C」且 A - B != C（资产流水穿帮）；③`same_key_conflict`：项目 `config.quant_keys` 声明的"每章单一取值"键，同章出现两个互斥金额；④`derived_numeric_drift`：`meta.l1_summary` / `summaries` 里的银钱数词在正文中查无（正文改尺后派生件停在旧值） | advisory |
+| `fact_issues` / `cross_chapter_key_conflict` | `book audit` + `book reconcile` + `book facts` + `run checkpoint` | 项目 `config.fact_keys` 声明的取值域被违反：同一实体称谓出现第二套写法、同一数值键有两个值、同一时点两个年份、互斥集合两个成员、同一单位的清单总数对不上；跨章同键双值另出 `cross_chapter_key_conflict`。写法与修复 SOP 见[事实登记表](fact-registry.md) | 检查点进 blockers（停线裁决），`book audit` / `book reconcile` 为 advisory；`book complete` 收为 blocker |
+| `chapter_format` | `chapter submit` / `book audit` + `book reconcile` | 确定性格式缺陷：重复章头、章号与实际章号不符、写作期分场标记（「第 N 场」）、成稿残留（「本章完」类）、裸标题行、引号体例混用或未闭合（四套体例逐一查配对） | 章内提交硬闸（判 `fix_draft` / `polish_rejected`）；`book audit` 与完本门槛为 blocker |
+| `near_duplicate_passages` / `repeated_phrases` | `book audit` + `book reconcile` + `run checkpoint` | ①跨章近重复叙述（同一场事件被写两遍的机器信号，句对齐窗口 + 汉字 3-gram 重叠率，默认阈值 0.85）；②全书高频片段榜（口头禅/复读的可见计数） | advisory：改一处或留裁决，不自动定罪 |
 
 **挑键纪律**：`quant_keys` 只列"每章应当单一取值"的口径名词（年租、折价…）；一章内本就可能有多笔的（如本利/利钱）会产生真假混杂。
 

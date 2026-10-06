@@ -342,6 +342,30 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # 但只有项目显式填了才生效——开书时由作者按 intent 模板 §五 的「禁用写法」列填。
     # 默认给空表而不是不给键：键在配置里可见，才知道这个闸门存在、该往哪填。
     "glossary": {},
+    # 书级事实登记表（`{键名: {kind, canonical, observe/suffixes, …}}`）。
+    # 长篇最贵的缺陷是「同一件事在书内有两套说法」——同一个人换了称谓、同一个数字两个值、
+    # 同一批数目对不上、同一年在三处三个说法。这类错单章读不出来，只有把**取值域**声明
+    # 出来才能机检。判据与观测全在 `content/consistency.py`（题材无关），取值全部由本键声明：
+    #   kind=entity  canonical 是规范称谓；`suffixes:["家"]` 按后缀族扫，或 `observe:"称谓"`
+    #                按名字扫，`aliases` 列合法别名（身份揭示）。
+    #   kind=number  canonical 是规范数值；`observe` 是键（如「岁」），`tolerance` 容差。
+    #   kind=date    canonical 是规范年（公历）；`observe` 是键，`era_map` 给纪年基准/特例。
+    #   kind=set     canonical 是首选取值，`allow` 列同处允许的其他成员（二选一互斥）。
+    #   kind=count   canonical 是一批事物的总数；`observe` 是那批事物的名词。
+    # 留空 → 全部事实探针恒空输出（默认零误报）。填法、常见失误与修复 SOP 见
+    # `references/fact-registry.md`；候选由 `book calibrate` 从正典派生（只建议不自动写）。
+    "fact_keys": {},
+    # 引号体例：auto=只判「同一章内只准一种体系、配对必须闭合」；也可显式锁定
+    # cn_double/cn_corner/zh_book/ascii。成稿里混用两三套引号是典型的多稿缝合残留，
+    # 单看一章发现不了，靠 `book audit` 的体例汇总点名。
+    "quote_style": "auto",
+    # 跨章扫描的强度旋钮（advisory 级判据的阈值；误报高就抬高阈值或调小 cap）。
+    "consistency_scan": {
+        "near_duplicate_min_hans": 60,
+        "near_duplicate_threshold": 0.85,
+        "repeated_phrase_min_count": 6,
+        "repeated_phrase_cap": 20,
+    },
 }
 
 # 编拍纪律：每章 5 场戏。空列表仍 missing_beats；条数不在带内只警告，submit 不因此 rejected。

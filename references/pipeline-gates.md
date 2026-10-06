@@ -62,6 +62,27 @@ condensedcondensed 这类粘连重复）确定性机检直拦——曾只靠 dra
 零配额）；组装 `submit` 时仍复检，单独命中按 recovery `one_point_prose` 走零模型
 rework-patch。确需拉丁文（咒语/术语）的书 `config set foreign_fragment_gate=allow` 按书豁免。
 
+**成稿格式闸（`chapter_format`）**：与字数带、外文残片同 philosophy——最便宜的
+`draft-submit` 点就地拦，`draft_rejected` / `polish_rejected`，phase 留在原相位、
+staging 文件保留，原位修完重提。判据全部是**确定性**缺陷（小说正文不会自然出现）：
+
+- `duplicated_chapter_header`（同章两遍章头：多稿缝合的典型残留）、
+  `chapter_header_mismatch`（章头数字 ≠ 实际章号）、`chapter_header_style_mixed`
+  （全书阿拉伯/中文数字体例分裂，跨章聚合）；
+- `story_marker_residue`（「（本章完）」「待续」类平台话术、编辑提示式标记）、
+  `scene_break_marker`（写作期分场标记「第 N 场」）、`bare_scene_heading`（裸标题行）；
+- `quote_style_mixed` / `quote_unpaired`：四套引号体例逐一查配对与混用。
+
+只写作模式（`polish=off`，skill 缺省）下草稿即终稿，这道闸是格式残留唯一还能被拦住的地方，
+所以它同时挂在 `draft-submit`。润色阶段同理：只拦**润色自己引入**的格式缺陷
+（草稿干净、润色重排标点时改坏的），回 polish 重润而不整链重写。按书锁定体例用
+`config set --key quote_style --value <cn_double|cn_corner|zh_book|ascii>`（默认 `auto`：
+只判「同章内只准一种体系」）。
+
+格式之外的书级事实一致性（同一事实两套取值、跨章近重复叙述、高频片段）不在章内硬闸：
+判据需要整书视野，落在 `run checkpoint`（硬事实冲突停线）、`book audit` 与 `book reconcile`
+（advisory 待办）、`book complete`（收为 blocker）。写法见[事实登记表](fact-registry.md)。
+
 ## 文风机检（polish-submit 收口）
 
 `config.style_check`（`true`，或 `auto` 且 voice=shijing）时，`polish-submit` 区分明确出戏的

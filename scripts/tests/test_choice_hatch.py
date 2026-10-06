@@ -272,7 +272,7 @@ def test_protagonist_name_cliche_is_advisory_only():
         warn = protagonist_name_cliche_warnings(cliche)
         assert [w["code"] for w in warn] == ["protagonist_name_cliche"], cliche
         assert "称呼链" in warn[0]["hint"]
-    for clean in ("张铁", "赵显", "韩立", "苏九", "沈青临", "李有粮", "陈守拙", "裴听雨"):
+    for clean in ("张铁", "赵显", "韩立", "苏九", "沈青临", "李有粮", "王守田", "裴听雨"):
         assert protagonist_name_cliche_warnings(clean) == [], clean
 
 

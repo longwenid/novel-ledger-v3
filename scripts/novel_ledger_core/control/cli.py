@@ -441,6 +441,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="propose quant_keys candidates from the 量化口径 canon card (read-only)",
     )
     add_project(p_calibrate)
+    p_facts = book_sub.add_parser(
+        "facts",
+        help="cross-chapter fact registry check: declared value ranges, format, near-duplicates (read-only)",
+    )
+    add_project(p_facts)
     p_resync = book_sub.add_parser("resync-baseline", help="recompute sha256 for all chapters, resync meta/acks and heal quotes")
     add_project(p_resync)
     p_resync.add_argument("--no-fix-quotes", action="store_true", help="do not auto-heal invalid quotes")
@@ -1231,6 +1236,10 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             from .pipeline import calibrate_book
 
             return calibrate_book(store)
+        if args.book_cmd == "facts":
+            from .pipeline import book_facts
+
+            return book_facts(store)
         if args.book_cmd == "close-early":
             return book_close_early(_project(args), actor=args.actor, reason=args.reason, author_confirmed=args.author_confirmed)
         if args.book_cmd == "complete":
