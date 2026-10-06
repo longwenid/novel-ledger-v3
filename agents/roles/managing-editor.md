@@ -2,8 +2,8 @@
 
 总编辑是全书**唯一最高裁决者**。在作者授权的意图范围内，总编辑决定一切：
 脚本只提供事实与闸门，不替总编辑做艺术判断；下级角色只提供产物与证据，不替总编辑做决定。
-无人值守时，总编辑身份存在于每个短生命周期章节会话中；全局常驻的是不使用模型的确定性 supervisor，
-不是携带整书聊天历史的总编辑会话。
+无人值守时，总编辑身份存在于宿主会话与每个短生命周期章节会话中；推进状态的是确定性
+控制面与宿主的阶段派发循环，不是携带整书聊天历史的总编辑会话。
 
 ---
 
@@ -56,19 +56,13 @@
 ## 三、日常主循环（章级）
 
 1. **调度器读 `chapter next --card`**：数据库内 HEAD 决定唯一待做 action。首次或恢复都不凭聊天历史猜阶段；
-   无人值守接力/恢复时先读 `book/run/unattended-log.md` 的交接节（或 `run handoff` 的机器段），
+   无人值守恢复时先读 `book/run/unattended-log.md` 的交接节（或 `run handoff` 的机器段），
    再用 `status --card` 核对盘上 HEAD 与日志一致，然后才 `next`。
    **调度卡纪律（上下文预算）**：宿主会话是唯一长生命周期对话，全量信封（hint、场次预算、
    钩子清单、自检清单，单阶段 2–5KB）进宿主上下文就是章章叠加的主源头——`--card` 只收
    动作/相位/停止位与派发指针，信封全量在 stage-action 文件里由 worker 自取；宿主不把信封
    或 stage-action 文件内容粘贴进对话，派发 prompt 只复制卡上的路径；核对相位一律
-   `status --card`，全量诊断才用裸 `status`。批内累积仍按批纪律在章界收口（见 §三.8）。
-   卡内 `host_batch` 节就是批纪律的机器停机位：**新会话第一件事**先
-   `run handoff --host-session-start` 立批界基线（无基线时卡带 baseline_missing 提示）；
-   acks_since_boundary 达到 host_batch_chapters（默认 0=关闭，仅托管分批场景 config set 开启）后 boundary 在 draft/extend_plan
-   决策点亮且闩锁——批中普通 `run handoff` 只做收口留痕，不重置计数、不解除 boundary，
-   只有接力新会话才开新计数。boundary 下收口 = handoff + 结束本会话，禁止再开新章
-   （boundary 下继续跑等于放任宿主上下文平方税滚大，且计数自缴械）。
+   `status --card`，全量诊断才用裸 `status`。批内累积按批纪律在章界收口（见 §三.8）。
 2. **按 action 派单阶段 job**：draft / polish / assemble 用标准档，ack 与 plan 用最强档。
    创建空上下文（禁止 fork/history inheritance）；只给 action 文件、当前角色卡与协议卡路径。
    worker 提交后立即结束；只有调度器再次运行 next，commit 仍由确定性控制面完成。
@@ -110,12 +104,9 @@
    - 任何裁决必须按三段式留痕写入 `$PROJECT/book/editorial/decisions.jsonl`：
      `Ruling: <裁决内容> — <依据/理由> — <若错成本/回滚代价>`。
 8. **无人值守批纪律（宿主会话形态）**：会话式宿主（子 agent 派发）的长跑必须按
-   [有界批接力](../../references/unattended.md)执行——宿主会话会被轮数/时长/配额
+   [有界批纪律](../../references/unattended.md)执行——宿主会话会被轮数/时长/配额
    中断，把「写完一卷/全书」设成本会话目标必然半路停摆：
-   - **批目标有界**：默认 5 章（或时间盒取先到者）；禁止无界目标。批界由调度卡
-     `host_batch.boundary` 机器提示（闩锁：普通 handoff 不解除，只有新会话重置）；
-     宿主会话启动第一件事先 `run handoff --host-session-start` 立批界基线
-     （无基线时卡带 baseline_missing 提示）。
+   - **批目标有界**：默认 20 章（或时间盒取先到者）；禁止无界目标。
    - **轮数预算**：宿主 goal/任务原语按轮计时的，每章含返工按 12–15 轮估，
      goal 轮数 ≥ 15×批章数＋5（轮数不够就把批改小，不要硬跑）；无轮数原语按时间盒估。
    - **章界收口**：每章 ack 后先在 `book/run/unattended-log.md` 追加一行（章号、verdict、
@@ -124,12 +115,12 @@
    - **交接节**：批末或任何中止点，在 unattended-log.md 追加「## 交接」小节（当前
      HEAD/phase、已完成区间、下一动作命令、开放 findings 与逾期 hooks、本批裁决摘要）；
      机器段可由 `run handoff` 生成，宿主补批次上下文。
-   - **接力**：宿主有定时器/自动化原语且作者要求连续无人值守时，批末配置接力（触发即
-     新会话、`locked` 即退、从盘上 HEAD 续跑）；没有就向作者回报批次摘要后停。
+   - **收口即报告**：批末向作者回报批次摘要后停；下一批由作者在新会话里从盘上 HEAD
+     续跑，不在被拉起的会话里创建自动化。
 
 ## 四、全局闸门（批 / 卷 / 全书）
 
-- **批级闸门**：每 10 章 ack 后由 runner 做批窗口机器检查点，读取最近 10 章产物、质量事件
+- **批级闸门**：每 10 章 ack 后做批窗口机器检查点，读取最近 10 章产物、质量事件
   与当前未结资产；有阻断项暂停，待总编辑处置。会话宿主形态在章界直接跑 `run checkpoint`
   （与环内同一条确定性检查路，零模型调用），只读结论（review_required / blockers / 路径）；
   仅 review_required 才派 triage 子代理——预算模型步 ≤ 30、等待用 shell sleep、按报告路径定向

@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 
 from novel_ledger_core.control import autopilot
-from novel_ledger_core.control.autopilot import resume_run, run_supervisor
+from novel_ledger_core.control.autopilot import resume_run, run_checkpoint
 from novel_ledger_core.infra.util import (
     atomic_json, canonical_json, chinese_word_count, read_json, sha256_text,
 )
 from novel_ledger_core.ledger.ledger import _event_digest
 
-from scripts.tests.test_autopilot import _config, _fake_worker, _store
+from scripts.tests.test_autopilot import _store
 
 
 def _chapter_artifacts(store, chapter: int) -> None:
@@ -146,7 +146,6 @@ def test_checkpoint_large_quality_and_ledger_events_do_not_hide_range(tmp_path: 
     assert not report["ledger"]["truncated"]
 
 
-
 def test_volume_checkpoint_loads_relevant_review_and_flags_overdue_hook(tmp_path: Path):
     store = _store(tmp_path, chapters=3)
     plan = store.load_plan()
@@ -174,14 +173,14 @@ def test_volume_checkpoint_loads_relevant_review_and_flags_overdue_hook(tmp_path
     assert {issue["code"] for issue in report["blockers"]} == {"overdue_hooks"}
 
 
-def test_supervisor_pauses_on_dirty_batch_checkpoint_and_rechecks_on_resume(
+def test_dirty_batch_checkpoint_pauses_and_rechecks_after_resume(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    """会话宿主在章界跑 run checkpoint：脏报告以 review_required 暂停，处置后 resume 重查同一章。"""
     store = _store(tmp_path, chapters=12)
     head = store.read_head()
-    head.update({"chapter": 9, "phase": "idle", "last_committed_ch": 9, "last_acked_ch": 9})
+    head.update({"chapter": 10, "phase": "idle", "last_committed_ch": 10, "last_acked_ch": 10})
     store.write_head(head)
-    config = _config(tmp_path, _fake_worker(tmp_path))
     calls: list[int] = []
 
     def dirty_report(store, *, chapter, previous, kinds):
@@ -192,21 +191,20 @@ def test_supervisor_pauses_on_dirty_batch_checkpoint_and_rechecks_on_resume(
         }
 
     monkeypatch.setattr(autopilot, "_checkpoint_report", dirty_report)
-    result = run_supervisor(store, config, once=False, max_chapters=2)
+    result = run_checkpoint(store)
     assert result["action"] == "run_paused"
     assert result["reason"] == "review_required"
     assert calls == [10]
-    assert len((store.project / "jobs.log").read_text(encoding="utf-8").splitlines()) == 1
     state = read_json(store.autopilot_state_path)
     assert state["status"] == "paused"
     assert state["last_checkpoint"]["chapter"] == 10
     assert state.get("last_checkpoint_ch", 0) < 10
 
     resume_run(store)
-    again = run_supervisor(store, config, once=True)
+    again = run_checkpoint(store)
     assert again["reason"] == "review_required"
     assert calls == [10, 10]
-    assert len((store.project / "jobs.log").read_text(encoding="utf-8").splitlines()) == 1
+    assert read_json(store.autopilot_state_path).get("last_checkpoint_ch", 0) < 10
 
 
 def test_volume_boundary_emits_review_signal_before_tenth_chapter(
@@ -218,95 +216,18 @@ def test_volume_boundary_emits_review_signal_before_tenth_chapter(
         chapter["volume"] = 1 if index < 2 else 2
     store.save_plan(plan)
     head = store.read_head()
-    head.update({"chapter": 1, "phase": "idle", "last_committed_ch": 1, "last_acked_ch": 1})
+    head.update({"chapter": 2, "phase": "idle", "last_committed_ch": 2, "last_acked_ch": 2})
     store.write_head(head)
-    config = _config(tmp_path, _fake_worker(tmp_path))
-    seen: list[tuple[int, tuple[str, ...]]] = []
+    monkeypatch.setattr(autopilot, "_checkpoint_report", lambda store, *, chapter, previous, kinds: {
+        "chapter": chapter, "kinds": list(kinds), "review_required": False, "blockers": [],
+    })
 
-    def clean_report(store, *, chapter, previous, kinds):
-        seen.append((chapter, kinds))
-        return {"chapter": chapter, "kinds": list(kinds), "review_required": False, "blockers": []}
-
-    monkeypatch.setattr(autopilot, "_checkpoint_report", clean_report)
-    result = run_supervisor(store, config, once=True)
-    assert result["action"] == "run_job_complete"
-    assert seen == [(2, ("volume",))]
+    result = run_checkpoint(store)
+    assert result["action"] == "run_checkpoint" and result["stop"] is False
     events = [json.loads(line) for line in store.autopilot_events_path.read_text().splitlines()]
+    kinds = [tuple(e["kinds"]) for e in events if e["event"] == "quality_checkpoint"]
+    assert kinds == [("volume",)]
     assert len([event for event in events if event["event"] == "volume_review"]) == 1
-
-
-def test_dirty_completion_audit_pauses_without_completed_event(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    store = _store(tmp_path, chapters=2)
-    head = store.read_head()
-    head.update({"phase": "complete", "status": "completed"})
-    store.write_head(head)
-    config = _config(tmp_path, _fake_worker(tmp_path))
-    monkeypatch.setattr(autopilot, "audit_book", lambda _: {
-        "ok": True, "action": "book_audit", "ledger_consistent": False,
-        "ledger_diffs": ["snapshot:hooks"],
-        "quote_issues": [], "hash_mismatch_chapters": [],
-    })
-
-    result = run_supervisor(store, config, once=True)
-    assert result["action"] == "run_paused"
-    assert result["reason"] == "completion_audit_failed"
-    assert read_json(store.autopilot_state_path)["status"] == "paused"
-    events = [json.loads(line) for line in store.autopilot_events_path.read_text().splitlines()]
-    assert not any(event["event"] == "completed" for event in events)
-
-
-def test_clean_completion_audit_can_complete(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    store = _store(tmp_path, chapters=2)
-    head = store.read_head()
-    head.update({"phase": "complete", "status": "completed"})
-    store.write_head(head)
-    config = _config(tmp_path, _fake_worker(tmp_path))
-    monkeypatch.setattr(autopilot, "audit_book", lambda _: {
-        "ok": True, "action": "book_audit", "ledger_consistent": True,
-        "ledger_quote_consistent": True,
-        "ledger_diffs": [], "ledger_hygiene_issues": [], "quote_issues": [],
-        "hash_mismatch_chapters": [], "quote_invalid_count": 0,
-        "ledger_quote_invalid_count": 0, "glossary_issues": [], "seam_issues": [],
-        "numeric_issue_count": 0, "derived_drift_count": 0,
-        "derived_name_drift_count": 0, "overdue_hooks_count": 0,
-    })
-    result = run_supervisor(store, config, once=True)
-    assert result["action"] == "run_complete"
-    assert read_json(store.autopilot_state_path)["status"] == "completed"
-
-
-def test_completion_rechecks_deferred_overdue_hook_in_snapshot(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    store = _store(tmp_path, chapters=2)
-    head = store.read_head()
-    head.update({"phase": "complete", "status": "completed"})
-    store.write_head(head)
-    snap = read_json(store.snapshot_path)
-    snap["chapter"] = 2
-    snap["hooks"] = [{"id": "h-delayed", "status": "deferred", "due": 1}]
-    atomic_json(store.snapshot_path, snap)
-    monkeypatch.setattr(autopilot, "audit_book", lambda _: {
-        "ok": True, "action": "book_audit", "ledger_consistent": True,
-        "overdue_hooks_count": 0,
-    })
-    result = run_supervisor(store, _config(tmp_path, _fake_worker(tmp_path)), once=True)
-    assert result["reason"] == "completion_audit_failed"
-    assert "overdue_hooks_snapshot" in {item["code"] for item in result["blockers"]}
-
-
-def test_empty_book_cannot_complete_just_because_audit_executed(tmp_path: Path):
-    store = _store(tmp_path, chapters=2)
-    head = store.read_head()
-    head.update({"phase": "complete", "status": "completed"})
-    store.write_head(head)
-    result = run_supervisor(store, _config(tmp_path, _fake_worker(tmp_path)), once=True)
-    assert result["reason"] == "completion_audit_failed"
-    assert "empty_book" in {item["code"] for item in result["blockers"]}
 
 
 def test_completion_audit_flags_content_errors_even_with_ok_true():
@@ -323,31 +244,6 @@ def test_completion_audit_pauses_for_unpaid_book_level_promise():
         "unresolved_long_term_commitments": [{"id": "commitment-seal"}],
     })
     assert blockers == [{"code": "unresolved_long_term_commitments", "count": 1}]
-
-
-def test_plan_worker_prompt_uses_signed_chapter_pace_including_legacy(tmp_path: Path):
-    store = _store(tmp_path, chapters=2)
-    plan = store.load_plan()
-    plan["book_outline"] = {"chapter_words_target": 3200}
-    store.save_plan(plan)
-    prompt = autopilot.build_worker_prompt(
-        project=store.project, job_id="plan-1", kind="plan", chapter=3,
-    )
-    assert "ceil(word_budget/3200)" in prompt
-
-    plan["book_outline"]["chapter_words_target"] = 2500
-    store.save_plan(plan)
-    legacy_prompt = autopilot.build_worker_prompt(
-        project=store.project, job_id="plan-2", kind="plan", chapter=3,
-    )
-    assert "ceil(word_budget/2500)" in legacy_prompt
-
-    plan.pop("book_outline")
-    store.save_plan(plan)
-    unsigned_prompt = autopilot.build_worker_prompt(
-        project=store.project, job_id="plan-3", kind="plan", chapter=3,
-    )
-    assert "ceil(word_budget/720)" in unsigned_prompt
 
 
 def test_run_checkpoint_standalone_writes_report_and_is_idempotent(tmp_path: Path):

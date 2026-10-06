@@ -220,12 +220,6 @@ def submit_review(store: BookStore, output: dict[str, Any]) -> dict[str, Any]:
     spec = _spec(store, view["scope"], int(view["first"]), int(view["through"]), view.get("volume"))
     if output.get("review_id") != spec["review_id"] or output.get("input_hash") != spec["input_hash"] or view.get("input_hash") != spec["input_hash"]:
         raise LedgerError("stale_story_review", "review text or signed contract changed; prepare a fresh review")
-    if store.autopilot_active_job_path.exists():
-        active = read_json(store.autopilot_active_job_path)
-        if (not isinstance(active, dict) or active.get("initial_action") != "story_review"
-                or active.get("review_id") != spec["review_id"]
-                or active.get("review_input_hash") != spec["input_hash"]):
-            raise LedgerError("story_review_job_mismatch", "review submission does not match the active isolated review job")
     head = store.read_head()
     if head.get("phase") != "idle" or int(head.get("last_committed_ch") or 0) != int(head.get("last_acked_ch") or 0):
         raise LedgerError("story_review_phase", "story review submission is only allowed between acknowledged chapters")

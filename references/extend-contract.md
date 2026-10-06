@@ -135,7 +135,7 @@ extend 只能向后追加，rework-patch 只动正文；当缺陷长在**已签�
 依据存于 `book_outline.chapter_rebudget` 并追加 `plan.rebudget` 治理事件，包含原总章数、
 已写章数/字数、续写卷与新额度。未写里程碑按剩余区间同比向后映射，逐项记录前后章号；
 已写里程碑保持历史位置，未写 `book_climax` 仍须落在新预算末 15%。机器核验该依据及全书/卷章额度公式，随意改大仍硬拒。
-同一 stage plan job 可先续签再择优再扩章；实际扩章成功后 fence 仍要求立即退出。
+同一 stage plan job 可先续签再择优再扩章；实际扩章成功后按单发纪律立即退出。
 
 ### 卷合同（`plan.volumes`）
 

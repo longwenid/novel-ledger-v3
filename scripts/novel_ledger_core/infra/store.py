@@ -272,13 +272,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # chapters_budget 一次签满当前卷（当前卷已签满则整签下一卷；无卷合同回退 20）。
     # 实测贴线补章：63 章烧了 13 轮扩纲 ≈109 万 token（占总盘 13%），每轮的钱≈写一章。
     "plan_extend_span": 20,
-    # 会话宿主（子 agent 形态）的批界：调度卡 host_batch.acks_since_boundary 达到该值时
-    # 在 draft/extend_plan 决策点亮 boundary 硬停提示——宿主 run handoff 收口本会话后由
-    # 接力新会话续跑。作者裁决（无人值守连写）：主线程一直执行、循环唤起子 agent，不停批、
-    # 不用定时器——默认 0（关闭）。调度卡 + --terse 实测宿主上下文恒轻（≈9.3K/章、
-    # 单调用 ≤2.5K），旧形态「全量信封×单调上下文」的平方税已不存在。要恢复分批交接
-    # （配额按会话计的托管平台）再 config set host_batch_chapters 5。supervisor 进程形态不受影响。
-    "host_batch_chapters": 0,
     "rewrite_limit": 1,
     "reopen_limit": 1,
     # style_check 机检未达标允许的返工次数：满额后 blocked（reason=style_metrics_failed），
@@ -412,9 +405,6 @@ class BookStore:
         self.quality_log_path = self.run_dir / "quality.jsonl"
         self.autopilot_state_path = self.run_dir / "autopilot.json"
         self.autopilot_events_path = self.run_dir / "autopilot-events.jsonl"
-        self.autopilot_lease_dir = Path(str(self.run_dir / "AUTOPILOT_LOCK.d"))
-        self.autopilot_pause_path = self.run_dir / "AUTOPILOT_PAUSE.json"
-        self.autopilot_active_job_path = self.run_dir / "AUTOPILOT_ACTIVE_JOB.json"
         self.ledger_dir = self.book / "ledger"
         self.events_path = self.ledger_dir / "events.jsonl"
         self.snapshot_path = self.ledger_dir / "snapshot.json"

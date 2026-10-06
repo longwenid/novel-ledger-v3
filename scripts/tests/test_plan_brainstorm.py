@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from novel_ledger_core.control.autopilot import build_worker_prompt
 from novel_ledger_core.control.bootstrap import init_project
 from novel_ledger_core.control.pipeline import (
     PLAN_CANDIDATES_SCHEMA,
@@ -244,16 +243,6 @@ def test_plan_brief_carries_batch_design(tmp_path: Path, store: BookStore):
     assert "plan-batch-candidates-" in design["design_directive"]
     assert [p["chapter"] for p in design["recent_patterns"]] == [1, 2, 3]
     assert design["recent_patterns"][0]["tags"] == ["对峙"]
-
-
-def test_build_worker_prompt_plan_includes_brainstorm_step(tmp_path: Path, store: BookStore):
-    prompt = build_worker_prompt(project=tmp_path, job_id="job-1", kind="plan", chapter=4)
-
-    assert "plan-batch-candidates-" in prompt
-    assert "plan select-batch" in prompt
-    # 既有锚：签卷算式、禁 spawn 纪律不因插入候选步骤而丢。
-    assert "ceil(word_budget/" in prompt
-    assert "禁止创建、派发或 fork 任何物理子 agent" in prompt
 
 
 def test_checkpoint_blocks_unwritten_batch_without_selection(tmp_path: Path, store: BookStore):

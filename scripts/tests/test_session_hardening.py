@@ -325,55 +325,6 @@ def test_worker_agent_execution_mode(tmp_path: Path):
     assert brief["skill_root"] == str(Path(brief["cli"]).resolve().parents[1])
 
 
-def test_dispatched_worker_session_never_gets_a_spawn_envelope(tmp_path: Path, monkeypatch):
-    """supervisor 派发的 worker 会话里，信封必须降级为 inline，不能再附 worker 简报。
-
-    现场曾出现：项目 config.execution_mode=worker-agent，`chapter next` 于是回
-    `spawn_allowed=true` + "spawn one disposable worker subagent"，而 supervisor 的派发
-    简报同一时刻写着"禁止创建、派发或 fork 任何物理子 agent"。两条指令字面互斥，
-    那一章靠模型自己选择服从 job 指令才没多开一个上下文。
-    判据完全走机器事实：active-job fence 的 job_id 与 NOVEL_LEDGER_JOB_ID 相等。
-    """
-    proj = _project(tmp_path)
-    store = BookStore(proj)
-    cfg = store.load_config()
-    cfg["execution_mode"] = "worker-agent"
-    store.save_config(cfg)
-
-    # 1) 没有 fence：普通交互会话，维持 worker-agent 派发形态。
-    free = chapter_next(store)
-    assert free["execution"]["mode"] == "worker-agent"
-    assert free["execution"]["spawn_allowed"] is True
-    assert "worker" in free
-
-    # 2) fence 在，但本会话没有凭据：不是那个 worker，仍是交互语境（写命令另有 fence 拦）。
-    store.autopilot_active_job_path.parent.mkdir(parents=True, exist_ok=True)
-    store.autopilot_active_job_path.write_text(
-        json.dumps({"job_id": "job-0003"}), encoding="utf-8"
-    )
-    monkeypatch.delenv("NOVEL_LEDGER_JOB_ID", raising=False)
-    foreign = chapter_next(store)
-    assert foreign["execution"]["mode"] == "worker-agent"
-    assert "dispatched_job" not in foreign["execution"]
-
-    # 3) 凭据对得上：本会话就是那个 worker —— 必须 inline，且不得再附 worker 简报。
-    monkeypatch.setenv("NOVEL_LEDGER_JOB_ID", "job-0003")
-    me = chapter_next(store)
-    assert me["execution"]["mode"] == "inline"
-    assert me["execution"]["spawn_allowed"] is False
-    assert me["execution"]["dispatched_job"] is True
-    assert me["execution"]["configured_mode"] == "worker-agent"
-    assert me["execution"]["mode_reason"] == "supervisor_worker_session"
-    assert "worker" not in me
-
-    # 4) 项目本来就是 inline 时不误报降级：mode_reason 区分"本来就 inline"与"被语境降级"。
-    cfg["execution_mode"] = "inline"
-    store.save_config(cfg)
-    native = chapter_next(store)
-    assert native["execution"]["mode"] == "inline"
-    assert native["execution"]["mode_reason"] == "supervisor_worker_session_confirmed"
-
-
 def test_extend_plan_worker_brief_is_single_shot(tmp_path: Path):
     """extend worker 是章间单发任务：跑完 plan extend 即退，不碰 chapter next。"""
     from novel_ledger_core.control.pipeline import _worker_brief

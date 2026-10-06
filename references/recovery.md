@@ -9,8 +9,8 @@
 - **写锁**：`chapter *`、`plan extend`、`kb sync`、`voice apply`、`retry-authorize`、`hooks close/defer/merge`、`relations rename/close`、`book hatch/complete/reopen/resync-baseline` 与 `ledger repair` 先取 `book/run/LOCK` 排他锁；拿不到立即返回 `locked`，不排队。
 - **CLI commit 是数据库事务**：events、snapshot、正文、meta、summary、hierarchy、voice 与 HEAD
   在同一 SQLite 事务提交；异常回滚，进程崩溃由 SQLite 日志恢复。文件导出在事务成功后生成，
-  中断可 `database export` 再生成。supervisor 的短写锁区也使用事务；直接调用 Python 函数
-  需显式 `store.transaction()`。旧文件项目或未包事务的程序调用仍按下述幂等前滚恢复。
+  中断可 `database export` 再生成；直接调用 Python 函数需显式 `store.transaction()`。
+  旧文件项目或未包事务的程序调用仍按下述幂等前滚恢复。
 - **重跑不会重复入账**：`commit_event` 幂等保护——账本里已有本章及其后的事件就拒绝再 append（`ledger_replay_conflict`）。事实按人物与文本去重，但重复事件仍会污染哈希链与其他状态迁移，必须整体拒绝。
 - **崩溃重跑默认前滚**：`ledger_replay_conflict` 时若账本里的本章事件与落盘 `output.json` 的 `state_delta` 逐字节一致、且已写盘的 meta（若有）与本次正文哈希一致，幂等尾部（md/meta/summary/hierarchy/voice/HEAD 全是原子覆盖）直接续跑进 `ack`——已写完的章不再要求人工 `retry-authorize` 整章回滚重写。delta 分歧或正文哈希不符 → 仍保守 `blocked` 等人。逐崩溃点收敛由 `test_commit_failpoints.py` 参数化证明。
 - **事件哈希链**：事件携带 `prev_hash` + `hash`（sha256(prev_hash + canonical(事件体))）成链；无哈希事件即断链。`ledger verify` 逐条重算（`event_chain_ok` / `event_chain_issues`）；链断时 `ledger repair` 拒绝从真源重建（否则等于把篡改洗白进 snapshot）。伏笔与关系裁决追加独立治理事件，不改旧章哈希；`book resync-baseline --restamp-canon` 追加正典基线裁决事件。

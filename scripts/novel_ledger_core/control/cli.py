@@ -201,54 +201,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_config_set.add_argument("--actor", default="unspecified", help="who or what is changing the config")
 
-    p_run = sub.add_parser("run", help="provider-neutral unattended chapter supervisor")
+    p_run = sub.add_parser("run", help="unattended session-host helpers (checkpoint / handoff / resume)")
     run_sub = p_run.add_subparsers(dest="run_cmd", required=True)
-    for name in ("start", "once"):
-        p = run_sub.add_parser(name, help=f"{name} the bounded unattended supervisor")
-        add_project(p)
-        p.add_argument("--driver-config", required=True, help="novel-ledger.driver.v1 JSON")
-        p.add_argument(
-            "--max-chapters",
-            type=int,
-            default=0,
-            help="stop this invocation after N newly acked chapters; 0 means unlimited",
-        )
-    p_run_status = run_sub.add_parser("status", help="read unattended supervisor state")
+    p_run_status = run_sub.add_parser("status", help="read unattended run state (checkpoint cursor)")
     add_project(p_run_status)
     p_run_handoff = run_sub.add_parser(
         "handoff",
         help="write book/run/handoff.md: HEAD, next step, due hooks, open findings (read-only)",
     )
     add_project(p_run_handoff)
-    p_run_handoff.add_argument(
-        "--host-session-start",
-        action="store_true",
-        help="mark this handoff as a NEW host session's first act (resets the host batch boundary baseline)",
-    )
     p_run_checkpoint = run_sub.add_parser(
         "checkpoint",
-        help="run the due batch/volume machine checkpoint now (session-host form; zero model calls)",
+        help="run the due batch/volume machine checkpoint now (zero model calls)",
     )
     add_project(p_run_checkpoint)
-    p_run_relay = run_sub.add_parser(
-        "relay-prompt",
-        help="emit the recurring relay-automation prompt from current run state (read-only; "
-        "the AUTHOR/interactive session creates the automation; fired sessions never do)",
+    p_run_resume = run_sub.add_parser(
+        "resume",
+        help="clear a paused run state (e.g. review_required) and reset an unhonored plan nudge",
     )
-    add_project(p_run_relay)
-    p_run_relay.add_argument(
-        "--every-hours",
-        type=int,
-        default=4,
-        help="suggested recurring cadence in hours (one bounded batch per fire)",
-    )
-    p_run_pause = run_sub.add_parser("pause", help="request a safe unattended stop")
-    add_project(p_run_pause)
-    p_run_pause.add_argument("--reason", required=True)
-    p_run_resume = run_sub.add_parser("resume", help="clear a pause request")
     add_project(p_run_resume)
-    p_run_validate = run_sub.add_parser("validate-config", help="validate driver config without writing")
-    p_run_validate.add_argument("--driver-config", required=True)
 
     p_ledger = sub.add_parser("ledger", help="ledger self-checks (event replay vs snapshot)")
     ledger_sub = p_ledger.add_subparsers(dest="ledger_cmd", required=True)
@@ -811,11 +782,6 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
         raise LedgerError("missing_project", "--project is required")
     store = BookStore(Path(args.project))
     with store.exclusive_lock():
-        _enforce_autopilot_fence(store)
-        if store.autopilot_active_job_path.exists():
-            from .stage_jobs import enforce_stage_command
-            from ..infra.util import canonical_json, sha256_text
-            enforce_stage_command(read_json(store.autopilot_active_job_path), args, store.read_head(), plan_fingerprint=sha256_text(canonical_json(store.load_plan()).decode("utf-8")))
         if args.cmd == "database" and args.database_cmd == "migrate":
             return _run(args)
         with store.transaction():
@@ -840,29 +806,6 @@ def _check_submit_file(store: BookStore, args: argparse.Namespace, expected_path
             "wrong_staging_file",
             "this submit always reads its own fixed staging file; --file may only repeat that path",
             {"expected": str(expected), "supplied": str(given)},
-        )
-
-
-def _enforce_autopilot_fence(store: BookStore) -> None:
-    """Only the currently dispatched worker may mutate a supervised book.
-
-    The check runs *inside* the normal book write lock.  The supervisor creates
-    the fence under that same lock before dispatch, so an operator command
-    cannot slip through between the check and a state mutation.
-    """
-    path = store.autopilot_active_job_path
-    if not path.exists():
-        return
-    active = read_json(path)
-    if not isinstance(active, dict) or not str(active.get("job_id") or ""):
-        raise LedgerError("autopilot_fence", "active unattended job fence is malformed")
-    expected = str(active["job_id"])
-    supplied = os.environ.get("NOVEL_LEDGER_JOB_ID", "")
-    if supplied != expected:
-        raise LedgerError(
-            "autopilot_fence",
-            "this book is fenced for the active unattended worker",
-            {"active_job_id": expected, "supplied_job_id": supplied or None},
         )
 
 
@@ -908,38 +851,18 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         from .autopilot import (
             autopilot_status,
             handoff_report,
-            request_pause,
             resume_run,
             run_checkpoint,
-            run_supervisor,
-            validate_config_response,
-            validate_driver_config,
         )
 
-        if args.run_cmd == "validate-config":
-            return validate_config_response(Path(args.driver_config))
         store = _project(args)
         if args.run_cmd == "status":
             return autopilot_status(store)
         if args.run_cmd == "handoff":
-            return handoff_report(store, host_session_start=bool(getattr(args, "host_session_start", False)))
-        if args.run_cmd == "relay-prompt":
-            from .autopilot import relay_prompt
-
-            return relay_prompt(store, every_hours=int(getattr(args, "every_hours", 4) or 4))
+            return handoff_report(store)
         if args.run_cmd == "checkpoint":
             return run_checkpoint(store)
-        if args.run_cmd == "pause":
-            return request_pause(store, args.reason)
-        if args.run_cmd == "resume":
-            return resume_run(store)
-        config = validate_driver_config(Path(args.driver_config))
-        return run_supervisor(
-            store,
-            config,
-            once=args.run_cmd == "once",
-            max_chapters=int(args.max_chapters or 0),
-        )
+        return resume_run(store)
 
     if args.cmd == "book" and args.book_cmd == "hatch" and getattr(args, "sample_manifest", False):
         from ..infra.util import ok as _ok

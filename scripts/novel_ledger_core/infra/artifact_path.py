@@ -93,8 +93,7 @@ class ArtifactPath(type(Path())):
         if key.startswith("staging/") and self.name.startswith(("draft-", "polished-", "assembly-", "hatch_")):
             return self.database.has(key)
         if key.startswith("run/"):
-            name = self.name
-            if name.startswith(("LOCK", "AUTOPILOT_LOCK", "autopilot-worker.")) or name == "autopilot-current.result.json":
+            if self.name == "LOCK":
                 return False
         return True
 

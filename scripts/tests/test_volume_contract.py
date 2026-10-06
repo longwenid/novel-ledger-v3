@@ -6,13 +6,11 @@
 2. `plan extend` 签卷合同——volumes payload 合并语义、纯签卷模式、scale 合同硬校验；
 3. 卷合同覆盖率左移告警——acts[].volumes 字符串形态复活 `book_outline_missing_volume`，
    Σ卷预算与全书目标失衡在签出当时可见（现场事故：8 卷 × 80 章配 400 章全书）；
-4. 无人值守运维面——active-job fence 只拦写命令（plan validate / chapter precheck 豁免）、
-   supervisor 启动时重置未兑现的低水位提示标记、validate-config 的 plan 限制下限告警。
+4. 无人值守恢复面——`run resume` 重置未兑现的低水位提示标记（「扩纲优先」不被吞）。
 """
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 try:
@@ -21,12 +19,8 @@ except ImportError:
     from tests import pytest_compat as pytest
 
 from novel_ledger_core.control.autopilot import (
-    DRIVER_SCHEMA,
     _reset_unhonored_nudge,
-    _limit_fit_warnings,
-    validate_driver_config,
 )
-from novel_ledger_core.control.cli import main
 from novel_ledger_core.control.bootstrap import init_project
 from novel_ledger_core.control.pipeline import (
     _creative_advisory,
@@ -409,35 +403,7 @@ def test_creative_advisory_flags_unsigned_volume_at_boundary(tmp_path: Path):
     assert "尚无卷脊条目" not in advisory2["hint"]
 
 
-# ---------------------------------------------------------------- 4. 无人值守运维面
-
-
-def test_plan_validate_and_chapter_precheck_bypass_active_job_fence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-):
-    """fence 只拦写命令：无人值守期间只读诊断（plan validate / chapter precheck）必须可用。"""
-    store = _init(tmp_path, _plan(chapters=2, volume_field=True), name="fence-ro")
-    atomic_json(store.autopilot_active_job_path, {
-        "schema": "novel-ledger.autopilot.v1", "job_id": "job-owner",
-        "kind": "chapter", "target": 1, "driver_kind": "command",
-    })
-    monkeypatch.delenv("NOVEL_LEDGER_JOB_ID", raising=False)
-
-    assert main(["plan", "validate", "--project", str(store.project)]) == 0
-    assert json.loads(capsys.readouterr().out)["passed"] is True
-
-    prose = store.project / "precheck-me.txt"
-    prose.write_text("主角在市集推进了一段试炼剧情。" * 5, encoding="utf-8")
-    assert main(["chapter", "precheck", "--project", str(store.project), "--file", str(prose)]) == 0
-    capsys.readouterr()
-
-    # 写命令仍被拦
-    assert main(["chapter", "next", "--project", str(store.project)]) == 1
-    assert json.loads(capsys.readouterr().out)["error"]["code"] == "autopilot_fence"
-    volumes_file = store.project / "volumes.json"
-    volumes_file.write_text(json.dumps({"volumes": {"vol-0002": {"spine": "二"}}}, ensure_ascii=False), encoding="utf-8")
-    assert main(["plan", "extend", "--project", str(store.project), "--chapters", str(volumes_file)]) == 1
-    assert json.loads(capsys.readouterr().out)["error"]["code"] == "autopilot_fence"
+# ---------------------------------------------------------------- 4. 无人值守恢复面
 
 
 def test_reset_unhonored_nudge_only_when_marker_equals_max_planned(tmp_path: Path):
@@ -463,30 +429,3 @@ def test_reset_unhonored_nudge_only_when_marker_equals_max_planned(tmp_path: Pat
     store.write_head(head)
     _reset_unhonored_nudge(store)
     assert store.read_head().get("plan_low_water_nudged_at") == 20
-
-
-def test_limit_fit_warnings_flag_tight_plan_limits(tmp_path: Path):
-    config_path = tmp_path / "driver.json"
-    config_path.write_text(json.dumps({
-        "schema": DRIVER_SCHEMA,
-        "driver": {"kind": "command", "argv": [sys.executable, "{prompt_file}"]},
-        "limits": {"plan_timeout_seconds": 1200, "no_progress_seconds": 600},
-    }), encoding="utf-8")
-    config = validate_driver_config(config_path)
-    codes = {w["code"] for w in _limit_fit_warnings(config)}
-    assert codes == {
-        "plan_job_timeout_tight",
-        "plan_job_no_progress_tight",
-        "external_driver_model_unmetered",  # command driver 恒带外部计费告警
-    }
-
-    # 缺省（已放宽到实证值）→ 无告警
-    config_path2 = tmp_path / "driver-default.json"
-    config_path2.write_text(json.dumps({
-        "schema": DRIVER_SCHEMA,
-        "driver": {"kind": "command", "argv": [sys.executable, "{prompt_file}"]},
-        "limits": {},
-    }), encoding="utf-8")
-    assert [w["code"] for w in _limit_fit_warnings(validate_driver_config(config_path2))] == [
-        "external_driver_model_unmetered"
-    ]

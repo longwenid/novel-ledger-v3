@@ -7,7 +7,7 @@
 HEAD、会话/执行模式、账本文件布局、文风记忆与总编辑台。submit 输出见 [write-output.md](write-output.md)；崩溃恢复与写锁见 [recovery.md](recovery.md)。
 
 所有持久化状态存于 `book/novel.sqlite3`。下述文件路径兼作文档地址与导出副本；
-脚本读数据库，外部改文件不会更新状态。未提交 staging、进程锁与 driver 临时文件例外。
+脚本读数据库，外部改文件不会更新状态。未提交 staging 与进程锁例外。
 迁移、备份、导入与查询见 [SQLite 与历史记忆](sqlite-memory.md)。
 
 ## HEAD（`book/run/HEAD.json`）
@@ -52,7 +52,7 @@ HEAD、会话/执行模式、账本文件布局、文风记忆与总编辑台。
 
 默认 stage-agent：next 的 execution 信封附 stage 简报，action_path 是当前阶段任务快照。
 每阶段创建空上下文新会话，禁止 fork/历史继承；worker 只提交当前阶段并退出，不运行 next。
-supervisor 保存 stage-sessions.json，校验每 job 的真实宿主 session_id 与 context_origin=empty。
+宿主核验每阶段会话 session_id 不同且 history 为空（context_origin=empty）。
 阶段文件只保证交接材料边界；访问安全需要宿主沙箱。worker-agent/inline 是显式职责隔离降级。
 editorial/findings.jsonl 独立保存逐条发现与处置，ack 清 staging 不删该记录。
 已入账 patch 更新 hash 后在 ack 标记 needs_review，review ack-patch 通过才算审核新版本。

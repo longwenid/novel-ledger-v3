@@ -26,19 +26,18 @@ worker-agent（整章 worker）或 inline（角色切换）时可降级，但它
 - next 附单阶段 worker 简报：action_path、唯一角色卡、协议卡、输出路径、停止条件。
 - worker 只提交当前阶段，不能运行 chapter next、进入下一阶段或创建子 agent。
 - 返工使用新的空会话，读取机检清单或 review_findings_path，并按问题补读相关完整证据。
-- 命令 driver 必须声明 driver.session_policy=fresh，并实际创建新的模型 conversation。
-- 每次成功 result 含 job_id、action、宿主真实 session_id、context_origin=empty。
-  控制面保存 stage-sessions.json 并拒绝跨 job 复用 session_id；恢复不能跳过该证明。
-  这是宿主对接线的审计承诺，不能阻止恶意宿主伪造 ID，也不能证明模型逐字读完。
-- stage fence 绑定 job_id、目标章及 action，只允许对应阶段提交和 telemetry；阶段移交后不再允许修改。
-  凭据匹配时 execution 返回 spawn_allowed=false，表示该会话就是被派发的 worker。
+- 宿主派发提示词带一行协议版本（`WORKER_PROMPT_PROTOCOL`）；worker 开工先与
+  `chapter next` 简报的 worker_protocol 核对一致，不一致即停（新旧实例混跑信号）。
+- 阶段会话由宿主新建且 history 为空（context_origin=empty）；宿主须核验每阶段
+  session_id 不同，不得 fork 或复用。这是宿主的审计承诺，不能阻止恶意宿主伪造 ID，
+  也不能证明模型逐字读完。
 
 ## 数据与权限
 
 正文、提交 JSON、引文和自检证据落盘；状态卡只传路径、计数和退出码。
 文件视图按当前角色组织任务相关材料，并保留来源路径供定向补读。上下文材料不设固定字数或字节上限，
 选中规则、摘要、合同和原文证据完整保留。真正的文件访问隔离需要宿主进程沙箱或能力白名单。
-本 CLI fence 只约束经 CLI 的写操作，无法拦截共享目录中的任意 Python/ shell 读写。
+宿主须自行串行化同书写者；共享目录中的任意 Python/ shell 读写不受 CLI 约束。
 因此不宣称 skill 自身提供 OS 安全隔离。需要该等级时宿主只挂载本阶段输入与 staging 输出。
 
 事实编辑 v2 必填 plot_findings（无问题 []）；除 UNVERIFIABLE 外发现必须有逐字 quote。
@@ -53,7 +52,7 @@ review resolve 显式记录 accepted/deferred/closed、actor 和理由。检查�
 request-id=job-id:request序号，uncached 必须明确给出，缺 telemetry 保持 unknown。
 stage-agent 宿主只见整单总量时改记 `--total-tokens`（total-only 合法形状，计入章节总量并按
 `stop_total_per_chapter` 熔断；stage-action 信封自带 `usage_request.request_id` 供回声）。
-结果若回传 usage_records，只重放相同请求 ID/元数据，禁止再次计入会话总量。
+同一 request-id 回声只重放相同计数/元数据，禁止再次计入会话总量。
 usage_guard 在下一模型 action 前拦截，确定性 commit 可以完成。不能靠最后汇总实现实时预算保护。
 
 draft/polish/assemble 标准档；ack、plan、疑难卷级/全书复核最强档；机械补丁经济档。
@@ -61,8 +60,10 @@ draft/polish/assemble 标准档；ack、plan、疑难卷级/全书复核最强�
 
 ## 部署验收
 
-Skill 指令本身不是运行器。run start 按 Driver 协议创建新会话，不能将长对话包装为新 session。
+Skill 指令本身不是运行器。无人值守由宿主会话内循环推进：主线程 `chapter next --card` →
+按调度卡唤起新空会话 worker → 核验 → 下一阶段（见 [unattended.md](unattended.md)），
+不能将长对话包装为新 session。
 上线核对 --version、status.runtime.control_fingerprint，并用一章闭环验证：
-四个阶段不同 session_id、上下文起点为空、错阶段写命令被拒、返工与中断恢复仍由新会话继续。
+四个阶段不同 session_id、上下文起点为空、返工与中断恢复仍由新会话继续。
 按阶段读取角色卡、当前视图和任务所需来源；材料不足时定向补读。成本靠相关性筛选、文件交接及减少重复请求控制；
 不能为降低调用数撤销独立终审。总编辑只派发、收状态卡；不转运正文。

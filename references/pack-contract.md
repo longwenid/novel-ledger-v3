@@ -131,12 +131,10 @@ prompt cache 命中。canonical pack（`current.json` / 归档）**仍走排序�
 }
 ```
 
-这个权限只允许当前阶段派一个空上下文 worker，提交后由调度器另建下一阶段会话。
-本会话已是 supervisor 派出的 worker 时 `mode=inline`、`spawn_allowed=false`，仅表示
-不得重复派发；`configured_mode=stage-agent` 和 `context_isolation=fresh_session` 保留会话契约。
+这个权限只允许当前阶段派一个空上下文 worker，提交后由宿主另建下一阶段会话。
 宿主无法创建空会话时应暂停报告能力缺口；用户显式选择 `worker-agent` 或 `inline` 才可
 兼容降级，返回 `context_isolation=stage_pack`、`context_isolation_required=false`，只有职责视图隔离。
-协议与宿主运行器的职责边界见 [execution-architecture.md](execution-architecture.md)。
+协议与宿主执行循环的职责边界见 [execution-architecture.md](execution-architecture.md)。
 
 按需加载：`kb_slice` 在 **pack 组装时按需检索**（本章 `beats` / `must` / 出场人名 / 地点；tags 匹配卡片 id/title/tags/aliases）。结构化正典中的 `aliases` 原样编译并参与检索；同义改写未命中时，章拍可用 `kb_refs` 按 id 引入关键规则。显式引用必须存在且不重复，入选卡片保留完整内容和来源路径；相关总表与世界规则按场景需要读取，不按摘录字数削短。`kb_slice_meta` 说明检索条件、候选与已选材料，关键规则不足时可按来源补读并在章拍补 `kb_refs`。
 

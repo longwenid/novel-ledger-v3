@@ -1,15 +1,14 @@
 # 从 pipeline.py 按域拆出（行为不变；全量测试为等价性闸门）。域：dispatch
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 from ...infra.store import (BookStore)
-from ...infra.util import (LedgerError, atomic_json, read_json)
+from ...infra.util import (atomic_json)
 
-# 与 supervisor 的 build_worker_prompt 共用本常量。宿主/项目两侧版本不一致 = 新旧 skill
-# 实例混跑，必须停止并如实报告（纪律见 references/unattended-runner.md）。改派发协议时
-# 先升此版本。
+# `chapter next` 的 worker 简报携带本版本；宿主派发提示词带同一行 `协议版本：<版本>`。
+# 两侧版本不一致 = 新旧两个 skill 实例混跑，必须停止并如实报告（纪律见
+# references/unattended.md）。改派发协议时先升此版本。
 # v7：assemble action 新增 assemble_brief_path（一次读全的线性任务书），读取契约从
 # 「polished + assemble pack」改为「brief + polished（pack 退为定向补读）」，并钉死
 # 「一次写成 / 引文交机检 / 禁考古」三条省 token 纪律（实测组装单章 0.9–1.2M tok）。
@@ -24,7 +23,6 @@ _ACTION_ROLES = {
     "extend_plan": "planning",
     "story_review": "story_review",
 }
-
 
 _ACTION_CONTEXT_ISOLATION = {
     "extend_plan": "editorial_state",
@@ -81,7 +79,7 @@ def _worker_brief(store: BookStore, payload: dict[str, Any]) -> dict[str, Any]:
         # 宿主用 worker 实际读到的这份信封回声即天然幂等。
         usage_request = {
             "request_id": f"{action}-ch{int(payload['chapter']):04d}-{uuid.uuid4().hex[:12]}",
-            "session_id": _dispatched_job_id(store) or None,
+            "session_id": None,
             "shape": "components_or_total",
             "record_hint": (
                 "after this stage's model response settles, the HOST records it: chapter "
@@ -105,8 +103,7 @@ def _worker_brief(store: BookStore, payload: dict[str, Any]) -> dict[str, Any]:
             "context_origin": "empty",
         }
     return {
-        **base,
-        "spawn": "one disposable worker subagent for THIS chapter only",
+        **base, "spawn": "one disposable worker subagent for THIS chapter only",
         "protocol": "chapter",
         "chapter": payload.get("chapter"),
         "resume_from": {"action": action, "phase": payload.get("phase")},
@@ -115,36 +112,12 @@ def _worker_brief(store: BookStore, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _dispatched_job_id(store: BookStore) -> str:
-    """当前无人值守 job 的 id（没有在跑则空串）。supervisor 只在派发期间写 active-job fence。"""
-    path = store.autopilot_active_job_path
-    if not path.exists():
-        return ""
-    try:
-        active = read_json(path)
-    except (OSError, ValueError, LedgerError):
-        return ""
-    if not isinstance(active, dict):
-        return ""
-    return str(active.get("job_id") or "")
-
-
-def _is_dispatched_worker_session(store: BookStore) -> bool:
-    """本会话是不是 supervisor 亲手派发的那一个 worker 会话。
-
-    判据就是 fence 自己的凭据：`NOVEL_LEDGER_JOB_ID` 与 active-job fence 的 `job_id` 相等。
-    这正是所有故事写命令必须携带的那份凭据（见 cli._enforce_autopilot_fence），
-    所以"对得上"等价于"本进程就是当前 job 的那个 worker 会话"——机器可检，不靠自述。
-    """
-    expected = _dispatched_job_id(store)
-    return bool(expected) and os.environ.get("NOVEL_LEDGER_JOB_ID", "") == expected
-
-
 def _with_execution_contract(payload: dict[str, Any], store: BookStore) -> dict[str, Any]:
     """Declare the host session contract, without claiming to create a model session.
 
-    A dispatched worker never spawns. Fresh-session context and filesystem access
-    are separate boundaries; inline/worker-agent only isolate logical views.
+    The host owns creation of empty model conversations. Fresh-session context and
+    filesystem access are separate boundaries; inline/worker-agent only isolate
+    logical views.
     """
     role = _ACTION_ROLES.get(str(payload.get("action") or ""))
     if role is None:
@@ -155,12 +128,11 @@ def _with_execution_contract(payload: dict[str, Any], store: BookStore) -> dict[
             payload["review_findings_path"] = str(review_path)
     configured = str(store.load_config().get("execution_mode") or "inline")
     fresh_required = configured == "stage-agent" or payload.get("action") == "story_review"
-    dispatched = _is_dispatched_worker_session(store)
-    mode = "inline" if (dispatched and configured in {"worker-agent", "stage-agent"}) else configured
+    mode = configured
     execution: dict[str, Any] = {
         "mode": mode,
         "role": role,
-        "spawn_allowed": not dispatched and (fresh_required or mode in {"worker-agent", "stage-agent"}),
+        "spawn_allowed": fresh_required or mode in {"worker-agent", "stage-agent"},
         "context_isolation": "fresh_session" if fresh_required else _ACTION_CONTEXT_ISOLATION.get(str(payload.get("action") or ""), "stage_pack"),
         "history_inheritance_allowed": not fresh_required,
         "session_scope": "stage" if fresh_required else "chapter",
@@ -168,34 +140,20 @@ def _with_execution_contract(payload: dict[str, Any], store: BookStore) -> dict[
         "preferred_tier": "standard",
     }
     if str(payload.get("action") or "") in {"extend_plan", "ack", "story_review"}:
-        # plan job 的档位要求随信封走：supervisor 路径由 tiers 独立解析；宿主派发路径上
-        # 这个字段是机器可读的档位缺口——宿主不能按 spawn 切模型时它如实可见（继承当前
-        # 会话模型并在状态卡记录），而不是只活在派发手册 §9 的纪律里。
+        # plan job 的档位要求随信封走：宿主派发路径上这个字段是机器可读的档位缺口
+        # ——宿主不能按 spawn 切模型时它如实可见（继承当前会话模型并在状态卡记录），
+        # 而不是只活在派发手册 §9 的纪律里。
         execution["preferred_tier"] = "strongest"
-    if dispatched:
-        execution["dispatched_job"] = True
-        execution["configured_mode"] = configured
-        execution["mode_reason"] = (
-            "supervisor_worker_session" if mode != configured else "supervisor_worker_session_confirmed"
-        )
     payload["execution"] = execution
     payload["context_isolation_required"] = fresh_required
-    if not dispatched and (fresh_required or mode in {"worker-agent", "stage-agent"}):
+    if fresh_required or mode in {"worker-agent", "stage-agent"}:
         payload["worker"] = _worker_brief(store, payload)
     return payload
 
 
 # 钩子清单/自检清单）进宿主上下文就是「调度层上下文一直叠加」的主源头（实测单阶段
 # 信封 2–5KB，每章 ×4 阶段，章章累加且每轮重播）。信封全量已在 stage-action 文件里，
-# worker 按路径自取；宿主只需要动作、相位、停止位与派发指针。host_batch 节同理只给
-# 批界计数与 boundary 停机位——宿主会话的上下文生命周期靠批界收口，不靠自觉记章数。
-_DISPATCH_CARD_KEYS = ("ok", "action", "chapter", "phase", "stop", "blocked", "pack_hash", "verdict")
-
-
-# 钩子清单/自检清单）进宿主上下文就是「调度层上下文一直叠加」的主源头（实测单阶段
-# 信封 2–5KB，每章 ×4 阶段，章章累加且每轮重播）。信封全量已在 stage-action 文件里，
-# worker 按路径自取；宿主只需要动作、相位、停止位与派发指针。host_batch 节同理只给
-# 批界计数与 boundary 停机位——宿主会话的上下文生命周期靠批界收口，不靠自觉记章数。
+# worker 按路径自取；宿主只需要动作、相位、停止位与派发指针。
 _DISPATCH_CARD_KEYS = ("ok", "action", "chapter", "phase", "stop", "blocked", "pack_hash", "verdict")
 _WORKER_CARD_KEYS = (
     "spawn", "protocol", "chapter", "action", "action_path", "role_card",
@@ -207,22 +165,12 @@ def _dispatch_card(payload: dict[str, Any], *, store: "BookStore | None" = None)
     """宿主调度视图：只留决策与派发要用的字段，信封全量留在盘上。
 
     兜底：信封没落盘（inline/worker-agent 会话自己执行、无 stage-action 文件）时
-    不能裁——那正是执行者本人的载荷；原样返回并注明回退原因。回退卡也带 host_batch
-    节（若可算）：ack/assemble 常走回退路径，批界闩锁不能只在 draft 卡上可见。
+    不能裁——那正是执行者本人的载荷；原样返回并注明回退原因。
     """
     worker = payload.get("worker") if isinstance(payload.get("worker"), dict) else {}
     envelope_path = worker.get("action_path")
-    if store is not None:
-        from ..autopilot import host_batch_view
-
-        batch_view = host_batch_view(store, action=str(payload.get("action") or ""))
-    else:
-        batch_view = None
     if not envelope_path or not Path(str(envelope_path)).exists():
-        fallback = {**payload, "card_fallback": "envelope not on disk (executor session); full payload returned"}
-        if batch_view is not None:
-            fallback["host_batch"] = batch_view
-        return fallback
+        return {**payload, "card_fallback": "envelope not on disk (executor session); full payload returned"}
     card = {key: payload[key] for key in _DISPATCH_CARD_KEYS if key in payload}
     if "head_transition" in payload:
         card["head_transition"] = payload["head_transition"]
@@ -236,10 +184,6 @@ def _dispatch_card(payload: dict[str, Any], *, store: "BookStore | None" = None)
     # 不再手写解析 SKILL_ROOT。
     cli_path = Path(__file__).resolve().parents[3] / "novel_ledger.py"
     card["cli_invocation"] = f'py -3 "{cli_path}" --project "{store.project}"'
-    # 宿主批界：boundary=true 是会话收口信号（run handoff 后结束本会话）。惰性导入避免
-    # 与 autopilot 的模块级反向依赖成环。
-    if batch_view is not None:
-        card["host_batch"] = batch_view
     card["card_note"] = (
         "full envelope lives at envelope_path (the worker reads it from disk); "
         "dispatcher: paste only card paths into the spawn prompt, never the envelope; "
@@ -254,8 +198,6 @@ __all__ = [
     '_ACTION_CONTEXT_ISOLATION',
     '_ACTION_ROLE_CARDS',
     '_worker_brief',
-    '_dispatched_job_id',
-    '_is_dispatched_worker_session',
     '_with_execution_contract',
     '_DISPATCH_CARD_KEYS',
     '_WORKER_CARD_KEYS',

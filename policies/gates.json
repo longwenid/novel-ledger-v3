@@ -8,18 +8,17 @@
       "tier": "mechanism",
       "enforced_by": [
         {
-          "file": "scripts/novel_ledger_core/control/autopilot.py",
-          "symbol": "record_session_receipt"
+          "file": "scripts/novel_ledger_core/control/pipeline/_dispatch.py",
+          "symbol": "_worker_brief"
         },
         {
-          "file": "scripts/novel_ledger_core/control/stage_jobs.py",
-          "symbol": "enforce_stage_command"
+          "file": "scripts/novel_ledger_core/control/pipeline/_commitack.py",
+          "symbol": "requires_new_session"
         }
       ],
       "proven_by": [
-        "scripts/tests/test_editorial_architecture.py::test_runner_runs_four_distinct_stage_sessions_and_only_one_chapter",
-        "scripts/tests/test_editorial_architecture.py::test_stage_fence_refuses_next_and_cross_role_submission",
-        "scripts/tests/test_editorial_architecture.py::test_runner_rejects_reused_context_and_missing_receipt_cannot_be_skipped"
+        "scripts/tests/test_session_hardening.py::test_worker_agent_execution_mode",
+        "scripts/tests/test_session_hardening.py::test_ack_session_mode_inline_compact"
       ]
     },
     {
@@ -253,32 +252,32 @@
       ]
     },
     {
-      "id": "active-job-fence",
-      "invariant_anchor": "写命令必须携带当前 `NOVEL_LEDGER_JOB_ID`",
+      "id": "unattended-inner-loop",
+      "invariant_anchor": "无人值守只用会话宿主内循环",
       "tier": "mechanism",
       "enforced_by": [
         {
-          "file": "scripts/novel_ledger_core/control/cli.py",
-          "symbol": "_enforce_autopilot_fence"
+          "file": "scripts/novel_ledger_core/control/autopilot.py",
+          "symbol": "run_checkpoint"
+        },
+        {
+          "file": "scripts/novel_ledger_core/control/autopilot.py",
+          "symbol": "resume_run"
         }
       ],
       "proven_by": [
-        "scripts/tests/test_autopilot.py::test_active_job_fence_rejects_other_writers_but_not_status",
-        "scripts/tests/test_autopilot.py::test_blocked_and_complete_do_not_dispatch_workers"
+        "scripts/tests/test_autopilot_checkpoints.py::test_run_checkpoint_standalone_pauses_on_review_required",
+        "scripts/tests/test_autopilot.py::test_run_resume_resets_unhonored_plan_nudge"
       ]
     },
     {
       "id": "worker-protocol-version",
-      "invariant_anchor": "确定性 supervisor 跨会话调度",
+      "invariant_anchor": "共用同一 `WORKER_PROMPT_PROTOCOL` 版本行",
       "tier": "mechanism",
       "enforced_by": [
         {
           "file": "scripts/novel_ledger_core/control/pipeline/_dispatch.py",
           "symbol": "WORKER_PROMPT_PROTOCOL"
-        },
-        {
-          "file": "scripts/novel_ledger_core/control/autopilot.py",
-          "symbol": "build_worker_prompt"
         }
       ],
       "proven_by": [

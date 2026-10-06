@@ -396,10 +396,9 @@
     },
     {
       "id": "unattended",
-      "use_when": "默认会话内循环唤起子 agent 连写（主线程一直执行，不用定时器；批界默认关）；CLI supervisor 供跨断电存活，定时器接力兜底",
+      "use_when": "会话内循环唤起子 agent 连写（主线程一直执行）：调度循环、检查点、用量、有界批与降级",
       "references": [
-        "references/unattended.md",
-        "references/unattended-runner.md"
+        "references/unattended.md"
       ],
       "commands": [
         [
@@ -407,23 +406,15 @@
         ],
         [
           "run",
-          "validate-config"
-        ],
-        [
-          "run",
-          "once"
-        ],
-        [
-          "run",
-          "start"
-        ],
-        [
-          "run",
           "status"
         ],
         [
           "run",
-          "pause"
+          "handoff"
+        ],
+        [
+          "run",
+          "checkpoint"
         ],
         [
           "run",

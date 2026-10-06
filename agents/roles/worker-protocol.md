@@ -38,22 +38,21 @@
   stage-action 信封自带 `usage_request.request_id` 与 `record_hint`，宿主回声该句柄即天然幂等。
   宿主只见整单总量时（stage-agent 子代理形态）改报 `--total-tokens`（total-only 同为合法
   形状，计入章节总量并驱动 stop_total_per_chapter 熔断）；分量与总量不得混报。
-  无 telemetry 保持 unknown，禁止补零。结果文件只可带 usage_records 请求明细；已经入账的
-  请求重发相同 ID 和元数据以幂等去重，禁止再把会话总量记一遍。
+  无 telemetry 保持 unknown，禁止补零。已经入账的请求重发相同 ID 和元数据以幂等去重，
+  禁止再把会话总量记一遍。
 
 ## 二、隔离阶段协议（简报 `protocol=stage`，默认）
 
 宿主必须以空上下文创建本 job 的新模型会话，禁止 fork、resume 或传入前阶段的聊天摘要。
 开工只读 action_path、当前 role_card 与本协议，再按 action 中的路径读取本阶段输入。
-不要运行 chapter next：它属于确定性调度器，且阶段 fence 会拒绝该命令。
+不要运行 chapter next：它属于宿主调度循环，不属于阶段 worker。
 只完成 draft、polish、assemble 或 ack 中的一个阶段；本阶段原位字段修正允许继续，
 但提交通过、phase 改变（包括正文返工）、blocked 或 usage_guard 后立即退出。
 返工的失败依据来自 review_findings_path 或机检报告；不能继承上一角色的推理。
 同书只运行一个 worker；worker 不派子 agent。
 
-命令驱动结果须匹配当前 job_id/action，并带宿主提供的真实 session_id、context_origin=empty。
-控制面拒绝跨 job 复用同一个 session_id。缺少会话证明则暂停，不将职责切换冒充隔离。
-声明是宿主的接线承诺，不是对模型完整阅读的数学证明，也不是文件系统沙箱。
+会话由宿主新建且 history 为空（context_origin=empty），每 job 一个新 session_id，
+禁止复用。声明是宿主的接线承诺，不是对模型完整阅读的数学证明，也不是文件系统沙箱。
 只有宿主允许的文件能力/进程沙箱才能阻止其它文件读取；共享工作目录中的提示词禁令仅是纪律。
 
 完成回复只给状态、路径和退出码，逐条自检与引用写在阶段产物中。

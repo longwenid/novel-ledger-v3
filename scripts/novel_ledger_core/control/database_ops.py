@@ -18,8 +18,6 @@ def migrate(store: BookStore) -> dict:
     root = Path(str(store.book))
     if not (root / "config.json").is_file() or not (root / "run" / "HEAD.json").is_file():
         raise LedgerError("not_initialized", "migration requires a file project with config and HEAD")
-    if (root / "run" / "AUTOPILOT_ACTIVE_JOB.json").exists():
-        raise LedgerError("migration_worker_active", "stop the old unattended worker before migrating")
     sources = []
     try:
         legacy_head = json.loads((root / "run" / "HEAD.json").read_text(encoding="utf-8"))

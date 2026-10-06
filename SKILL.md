@@ -10,9 +10,11 @@ description: >-
 # novel-ledger-v3
 
 宿主以总编辑身份工作；确定性控制面持有状态、派发与质量闸门。
-无人值守长跑由确定性 supervisor 跨会话调度，不把模型会话延长成整书任务。
+无人值守长跑由宿主会话主线程内循环推进：每阶段唤起一个空上下文子 agent，
+不把模型会话延长成整书任务。
 默认 `stage-agent`：每个 draft / polish / assemble / ack 阶段派发一个无历史继承的新会话，
-只通过指定视图与 staging 文件交接。阶段成功或回流即退出，下一阶段与返工由调度器另建会话。
+只通过指定视图与 staging 文件交接。阶段成功或回流即退出，下一阶段与返工由宿主另建会话；
+宿主派发提示词与 `chapter next` 的 worker 简报共用同一 `WORKER_PROMPT_PROTOCOL` 版本行。
 `worker-agent`（整章会话）与 `inline` 只作显式兼容降级，只有职责隔离，不能宣称上下文隔离。
 宿主若无法创建空上下文，应报告能力缺口，不得静默回退。写作与裁决按需读
 [总编辑操作卡](agents/roles/managing-editor.md)，只读查询直接执行对应命令。
@@ -70,8 +72,8 @@ Windows / Git Bash 的解释器探测与路径规则见 [运行平台](reference
   上下文不设固定字数上限，材料选择依据当前角色、人物、事件、阶段和待核问题。
 - 验收正文存于 SQLite，待提交稿件通过 staging 交接：工具输出和角色汇报只给路径、字数、覆盖、自检与退出码，
   禁止 dump 全文；文风 prompt 不复述手册规则，手册文件是唯一真源。
-- 无人值守只用 `run start` 或符合 Driver 协议的宿主，不用单会话长期目标命令；写命令必须携带
-  当前 `NOVEL_LEDGER_JOB_ID`；blocked、usage_guard、契约损坏和重试耗尽都暂停，不自行越权解锁。
+- 无人值守只用会话宿主内循环（主线程按阶段唤起空上下文子 agent），不用单会话长期目标
+  命令；blocked、usage_guard、契约损坏和重试耗尽都暂停，不自行越权解锁。
 - `book complete` 默认门槛为目标字数 90%；`--override-target` 是作者显式改约，不得由运行代理
   自行添加；正常完本还须计划写完、全部通读、承诺兑现、当前卷审与终局审通过、全书机检通过。
   作者明确提前封笔用 `book close-early --author-confirmed`，记录为 early_close，不称正常完本。
@@ -107,7 +109,7 @@ Windows / Git Bash 的解释器探测与路径规则见 [运行平台](reference
 | 人物声线 | 规划角色声线、知识边界与成长后的说话变化 | [角色声线与人物鲜活度](references/craft/character-voice.md) |
 | 读者体验 | 首读可理解性、章内回报与卷级连读复核 | [读者体验](references/craft/reader-experience.md) |
 | 剧情复核 | 跨卷与终局必经复核、证据回执、正常完本及提前封笔 | [剧情复核](references/story-review.md) |
-| 无人值守 | 默认会话内循环唤起子 agent 连写（主线程一直执行，不用定时器；批界默认关）；CLI supervisor 供跨断电存活，定时器接力兜底 | [无人值守连写](references/unattended.md)、[supervisor 运行器](references/unattended-runner.md) |
+| 无人值守 | 会话内循环唤起子 agent 连写（主线程一直执行）：调度循环、检查点、用量、有界批与降级 | [无人值守连写](references/unattended.md) |
 
 路由与不变量在 `policies/*.json` 有机器可校验镜像（命令死链、锚点覆盖、强制位与证明用例），
 改任何一侧先同步另一侧。
@@ -141,9 +143,11 @@ Windows / Git Bash 的解释器探测与路径规则见 [运行平台](reference
    stage-agent 宿主调度一律 `chapter next --card` / `status --card`：调度卡只含动作、
    相位、停止位与 worker 派发指针，全量信封留在盘上由 worker 自取——宿主是唯一长生命
    周期对话，信封进宿主上下文就是章章叠加；执行者会话（inline/worker-agent）自动回退全量。
-3. 无人值守先 `run validate-config`，再 `run start`；运行器按章创建新会话，遇到 blocked、
-   usage_guard 或契约损坏即停。恢复时先 `status` 与 `ledger verify`，事件链完整才可
-   `ledger repair --from-events`。命令参数、停止语义与故障处置按路由表读对应 reference。
+3. 无人值守由宿主会话内循环连写：按 [无人值守连写](references/unattended.md) 的调度循环
+   每阶段唤起空上下文子 agent，遇到 blocked、usage_guard 或契约损坏即停；每 10 章章界跑
+   `run checkpoint`，检查点 review_required 暂停时处置后 `run resume` 重查。恢复时先 `status`
+   与 `ledger verify`，事件链完整才可 `ledger repair --from-events`。命令参数、停止语义与
+   故障处置按路由表读对应 reference。
 4. 改书级配置（polish、字数带、pack_caps 等）只用 `config set --key <key> --value <value>`，
    读用 `config get [--key <key>]`：配置真源在 SQLite，磁盘 `config.json` 只是投影，
    直接编辑文件不生效——`status` 的 `config_shadow` 会点名这种漂移。

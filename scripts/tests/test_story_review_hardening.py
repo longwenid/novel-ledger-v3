@@ -1,4 +1,4 @@
-"""Independent review regression tests for receipt/fence and demand-loaded evidence."""
+"""Independent review regression tests for receipts and demand-loaded evidence."""
 from __future__ import annotations
 
 import copy
@@ -10,7 +10,6 @@ from novel_ledger_core.content.story_review import (
     prepare_review, receipts, submit_review,
 )
 from novel_ledger_core.content.extract import canon_source_fingerprint, extract_cards
-from novel_ledger_core.control.autopilot import run_one_job
 from novel_ledger_core.control.pipeline import book_complete, book_reopen, chapter_next
 from novel_ledger_core.infra.util import LedgerError, atomic_json, atomic_text, read_json
 from tests.test_story_review import pass_pending, review_output, story_store, write_chapter
@@ -53,19 +52,6 @@ def test_identical_receipt_retry_is_idempotent_and_can_finish_head_write(tmp_pat
     assert submit_review(store, output)["verdict"] == "pass"
     assert receipts(store) == previous
     assert store.read_head()["last_story_review"]["review_id"] == output["review_id"]
-
-
-@pytest.mark.parametrize("field", ["review_id", "review_input_hash"])
-def test_review_cannot_submit_under_another_active_job_binding(tmp_path, field):
-    store = _prepared(tmp_path)
-    output = review_output(store)
-    active = {"initial_action": "story_review", "review_id": output["review_id"], "review_input_hash": output["input_hash"]}
-    active[field] = "a different isolated review"
-    atomic_json(store.autopilot_active_job_path, active)
-    with pytest.raises(LedgerError) as raised:
-        submit_review(store, output)
-    assert raised.value.code == "story_review_job_mismatch"
-    assert receipts(store) == {}
 
 
 def test_book_promises_are_loaded_only_for_book_scope_without_clipping(tmp_path):
@@ -157,8 +143,9 @@ def test_normal_completed_book_rechecks_changed_omitted_source_before_run_succes
     assert store.read_head()["completion_kind"] == "normal"
     atomic_text(store.outline_path, source.replace("尾部旧标记", "尾部新标记"))
     assert pending_review(store, completing=True)["scope"] == "volume"
+    # 内循环完本路径：宿主重跑 book complete，被未决复核拦下（story_review_required）。
     with pytest.raises(LedgerError) as raised:
-        run_one_job(store, {}, lease=None, state={})
+        book_complete(store, actor="总编辑", reason="来源修订后重新完本")
     assert raised.value.code == "story_review_required"
     assert book_reopen(store, actor="作者", reason="来源修订后重新复核")["phase"] == "idle"
     assert chapter_next(store)["action"] == "story_review"

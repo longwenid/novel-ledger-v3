@@ -572,13 +572,6 @@ def plan_rebudget(store: BookStore, *, actor: str, reason: str) -> dict[str, Any
             or sum(int(v.get("chapters_budget") or 0) for v in volumes.values()) != current_total + rounding_surplus):
         raise LedgerError("plan_rebudget_unsigned", "sign complete, consistent volume budgets before rebudgeting")
     before_fingerprint = sha256_text(canonical_json(plan).decode("utf-8"))
-    active = read_json(store.autopilot_active_job_path) if store.autopilot_active_job_path.exists() else None
-    if active:
-        expected = active.get("rebudgeted_plan_fingerprint") or active.get("plan_fingerprint")
-        if (active.get("initial_action") != "extend_plan" or expected != before_fingerprint
-                or int(active.get("target") or 0) not in {through, through + 1}
-                or active.get("job_id") != os.environ.get("NOVEL_LEDGER_JOB_ID")):
-            raise LedgerError("stage_capability_violation", "rebudget requires the current plan job and unchanged input plan")
     candidate = copy.deepcopy(plan)
     shifts = []
     for milestone in candidate["book_outline"].get("milestones") or []:
@@ -609,9 +602,6 @@ def plan_rebudget(store: BookStore, *, actor: str, reason: str) -> dict[str, Any
                                            "previous_total_chapters": current_total})
     store.save_plan(candidate)
     after_fingerprint = sha256_text(canonical_json(candidate).decode("utf-8"))
-    if active:
-        active["rebudgeted_plan_fingerprint"] = after_fingerprint
-        atomic_json(store.autopilot_active_job_path, active)
     return ok(action="plan_rebudget", changed=True, previous_total_chapters=current_total,
               total_chapters=required, additional_chapters=additional, through_chapter=through,
               written_words=written, milestone_shifts=shifts, governance_hash=event["hash"],

@@ -98,8 +98,6 @@ __all__ = [
     '_ACTION_CONTEXT_ISOLATION',
     '_ACTION_ROLE_CARDS',
     '_worker_brief',
-    '_dispatched_job_id',
-    '_is_dispatched_worker_session',
     '_with_execution_contract',
     '_ASSEMBLY_ONLY_ISSUES',
     '_PLOT_SELF_CHECK',

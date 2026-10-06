@@ -69,17 +69,16 @@ def test_runtime_package_excludes_maintainer_surface():
 
 
 def test_execution_architecture_states_host_runner_acceptance_boundary():
-    """Skill 指令不能冒充 runner；发布文档必须保留跨会话接线与人工降级路径。"""
+    """Skill 指令不能冒充 runner；发布文档必须保留宿主内循环接线与人工降级路径。"""
     text = (REPO / "references" / "execution-architecture.md").read_text(encoding="utf-8")
     required = (
         "Skill 指令本身不是运行器",
-        "spawn_allowed=false",
+        "无人值守由宿主会话内循环推进",
         "chapter usage-record",
         "ack-read",
         "control_fingerprint",
         "逐请求回报四分量 telemetry",
         "人工按章创建新任务",
-        "run start",
     )
     missing = [item for item in required if item not in text]
     assert not missing, f"宿主上线边界文档缺项：{missing}"
@@ -646,9 +645,8 @@ _CLI_SOURCE = REPO / "scripts" / "novel_ledger_core" / "control" / "cli.py"
 _DOC_FLAG_RE = re.compile(r"(?<![\w-])(--[a-z][a-z0-9-]{1,30})")
 # argparse 自动提供，不写 add_argument；文档里出现属正常。
 _AUTO_FLAGS = {"--help"}
-# **宿主侧** CLI 的选项：无人值守驱动配置（`driver.argv`）指向的是宿主自己的无头 CLI，
-# 不是 novel-ledger CLI，文档必须能写出它真实的名字才教得会接线（现场事故：给
-# `dsh --profile headless` 加 `--model` 才把档位落到进程上）。这里逐个登记并配自检，
+# **宿主侧** CLI 的选项：宿主自己的模型 CLI（如无头编码 CLI）可能带 `--model`，
+# 文档必须能写出它真实的名字才教得会接线。这里逐个登记并配自检，
 # 避免它变成随便往里塞的垃圾桶：一旦 novel-ledger CLI 自己注册了同名选项，自检会提醒删除。
 _HOST_CLI_FLAGS = {"--model"}
 
