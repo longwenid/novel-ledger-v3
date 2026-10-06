@@ -135,7 +135,7 @@ worker-agent（整章）和 inline（角色切换）是显式兼容降级，只�
   `style_metrics_limit` → `blocked`，由总编辑按决策权矩阵处理。
 - 模型按 job 指定：draft/polish/assemble 标准档，ack/plan/疑难复核最强档，机械 patch 经济档。
   无覆盖能力则如实记录继承，不撤销空上下文边界。规则真源在 [dispatch.md](dispatch.md#9-派发模型分级与成本纪律model-tiering)。
-- **回复瘦身与防爆铁律（Lean Transcript）**：正文真源在磁盘，**严禁在回复中 dump 正文全文**，完成汇报仅限结构化状态卡（≤100 字：路径、字数、must/beats 状态、命令退出码、自检项）。
+- **回复瘦身与防爆铁律（Lean Transcript）**：正文真源在磁盘，**严禁在回复中 dump 正文全文**，完成汇报仅限**一行机器行状态卡**（≤100 字：路径、字数、must/beats 计数、命令退出码、自检结论）；verdict/quotes/自检明细写 staging 报告文件，回复只给该路径。阶段 worker 按 one-shot 收尾即退。
 - **返工硬断路器与就地修润（Hard Circuit Breaker）**：单章重写严格 ≤ 2 轮；个别事实或台词微调**强制由快速编辑角色执行 `chapter patch` 在终稿就地修润**，严禁推翻整链重跑；超过 2 轮总编辑三段式留痕裁决收口。
 - **物理执行唯一**：同书每次只有一个阶段 worker；下一阶段由调度器创建新空会话，worker 内禁止 spawn/fork。
 

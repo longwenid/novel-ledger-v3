@@ -15,7 +15,11 @@ worker）。`chapter next` → 派子 agent → 核验记账 → 下一阶段/�
    全量信封只落盘 stage-action 文件，由 worker 按路径自取——宿主上下文不进信封、不粘贴
    stage-action 内容，状态核对用 `status --card`。不读 pack/正文。
 2. draft / polish / assemble / ack：按调度卡创建无历史继承的新会话，
-   只给 action_path、唯一角色卡与 worker-protocol §二。worker 写 staging、执行当前提交后退出。
+   只给 action_path、唯一角色卡与 worker-protocol §二，并注明「不加载 SKILL.md /
+   写作模式入口」（worker 与宿主共享 preset 时，入口指令会对每个 worker 重放，
+   必须豁免——见 dispatch.md 派发配方第 0 项）。派发为 one-shot：worker 写 staging、
+   执行当前提交、回报一行机器行状态卡后即退，不留可续会话。完整报告（verdict/quotes/
+   自检明细）在 staging 报告文件里，宿主不收全文；超长回报按 dispatch.md runbook 拒收重派。
    ack 必须由新终审会话读 chapter_path 并摘取引文；CLI ack-read 不会代替模型阅读。
 3. 宿主 `status --card` 核对预期 phase；only then 再 next。提交返工按 submit 回执的
    `recovery.route` 分两路：`delta_only` / `one_point_prose` 走零模型宿主路径——按 steps 执行
@@ -82,8 +86,14 @@ plan worker 失败后处置完再 `run resume`：恢复会在写锁内**重置�
 ## 用量与记账
 
 每模型请求立即记录四分量 delta，request-id 唯一，禁止汇总重复计量；缺计量保持 unknown。
-完成状态卡只含路径与退出码，自检/quotes 留在 staging；不要复制协议内容制造第二真源。
+完成状态卡只含路径与退出码（一行机器行，见 dispatch.md Lean Transcript），自检/quotes
+留在 staging 报告文件；不要复制协议内容制造第二真源。
 角色卡与协议卡仍必须读，不能为了提速跳过职责边界。
+
+**批末转录预算核对**：每批收口（`run handoff` 前）宿主只读一次 `status` 的 usage 窗口
+（最近 12 章的 `input_per_chapter` / `max_input_per_chapter` / `by_chapter`），把本批
+四分量汇总与趋势追加进 unattended-log.md；单章 input 持续走高即先排查超长回报或
+重复派发，再继续下一批。窗口外的全量明细留在 `book/usage.jsonl`，不进宿主上下文。
 同书只派一个 worker；中断确认旧会话结束后，宿主从 HEAD 恢复未完成 action，创建新空会话。
 
 **宿主拿不到逐请求分量、但能看到整单总量时**（stage-agent 子代理的常态）：按信封
@@ -146,6 +156,10 @@ quality.jsonl 的 begin 悬空是良性残留（详见 [dispatch.md](dispatch.md
 1. **批目标有界**：N 章（默认 20）或时间盒（建议 ≤ 观察安全时长的一半），先到为止；
    禁止把「写完一卷/全书」设为单批目标。会话宿主的 goal/任务原语按轮计时：
    每章含返工按 12–15 轮估，goal 轮数 ≥ 15×批章数＋5，轮数不够就把批改小。
+1b. **宿主上下文预算触发**：宿主上下文逼近窗口（按 1M 级模型记 **≥600k tokens**；
+    其他窗口按 60%）或本批达到章数上限，就在当前章 ack 后立即 `run handoff` 章界
+    收口换会话，不等被动压缩——实测 73 章连跑宿主涨到 755k，按每章 +60k 估，压缩
+    一旦触发会丢掉全部已建立的 KV 缓存与调度手感。触发即收口是纪律，不是建议。
 2. **章边界收口**：每章 `ack-read` 后检查剩余预算；不足下一整章（约 12 轮）就在此处干净停
    （更新进度日志、回报批次摘要），绝不开始下一章的 draft——宁可少写一章，
    不浪费半章算力。

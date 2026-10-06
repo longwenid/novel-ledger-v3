@@ -252,6 +252,24 @@
       ]
     },
     {
+      "id": "transcript-budget",
+      "invariant_anchor": "回复与转录按预算收口",
+      "tier": "prose",
+      "enforced_by": [
+        {
+          "file": "references/dispatch.md",
+          "doc_marker": "一行机器行状态卡"
+        },
+        {
+          "file": "references/unattended.md",
+          "doc_marker": "宿主上下文预算触发"
+        }
+      ],
+      "proven_by": [
+        "scripts/tests/test_policy_conformance.py::test_prose_gate_docs_carry_the_discipline"
+      ]
+    },
+    {
       "id": "unattended-inner-loop",
       "invariant_anchor": "无人值守只用会话宿主内循环",
       "tier": "mechanism",

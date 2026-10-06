@@ -34,11 +34,14 @@ worker-agent（整章 worker）或 inline（角色切换）时可降级，但它
 
 ## 数据与权限
 
-正文、提交 JSON、引文和自检证据落盘；状态卡只传路径、计数和退出码。
+正文、提交 JSON、引文和自检证据落盘；状态卡只传路径、计数和退出码——
+且只占一行机器行（完整报告落 staging，见 dispatch.md Lean Transcript）。
 文件视图按当前角色组织任务相关材料，并保留来源路径供定向补读。上下文材料不设固定字数或字节上限，
 选中规则、摘要、合同和原文证据完整保留。真正的文件访问隔离需要宿主进程沙箱或能力白名单。
 宿主须自行串行化同书写者；共享目录中的任意 Python/ shell 读写不受 CLI 约束。
 因此不宣称 skill 自身提供 OS 安全隔离。需要该等级时宿主只挂载本阶段输入与 staging 输出。
+宿主转录按预算收口：每章增量异常先查超长回报，逼近单批预算即 `run handoff`
+章界换会话（触发线见 unattended.md 有界批纪律），不等被动压缩。
 
 事实编辑 v2 必填 plot_findings（无问题 []）；除 UNVERIFIABLE 外发现必须有逐字 quote。
 所有合法 findings 在变更 phase 前写入 editorial/findings.jsonl。review list 可按窗口分页；

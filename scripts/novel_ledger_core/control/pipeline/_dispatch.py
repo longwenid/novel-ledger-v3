@@ -12,7 +12,11 @@ from ...infra.util import (atomic_json)
 # v7：assemble action 新增 assemble_brief_path（一次读全的线性任务书），读取契约从
 # 「polished + assemble pack」改为「brief + polished（pack 退为定向补读）」，并钉死
 # 「一次写成 / 引文交机检 / 禁考古」三条省 token 纪律（实测组装单章 0.9–1.2M tok）。
-WORKER_PROMPT_PROTOCOL = "worker-prompt.v7"
+# v8：回复契约收紧为一行机器行状态卡（完整报告落盘 staging report 文件）；worker
+# 免加载 skill 入口（SKILL.md/写作模式），卡+action 即全部契约；阶段 worker 一次性
+# 收尾（one-shot 派发，不留 continuable 等待）。实测宿主转录每章 60–70k 中双份收尾
+# 与超长回报是最大重复源。
+WORKER_PROMPT_PROTOCOL = "worker-prompt.v8"
 
 
 _ACTION_ROLES = {

@@ -10,8 +10,15 @@
 ## 一、卫生铁律（hygiene，硬约束）
 
 - paths only: pack JSON and prose live on disk — never expect them inside your spawn prompt
+- no skill entry loading: your contract is the action file + this card + your role card, all
+  on disk; do NOT load SKILL.md or any writing-mode/入口 skill — the dispatcher prompt may
+  carry generic instructions, the cards on disk win
 - machine gates decide: run stage submits via the CLI; use `precheck` only for diagnostics
-- reply with a concise status card containing paths and exit codes only; never echo prose or pack content back
+- reply with EXACTLY ONE machine line as your status card: `ch-NNNN <stage> ok|<error-code>`
+  plus 产物路径、字数、覆盖计数、CLI 退出码 (≤100 字 total; paths and exit codes only).
+  The full report (verdicts/quotes/self-check details) goes to the staging report file the
+  action names (or `book/staging/report-<stage>-<ch>.md`) — never into your reply.
+  Hosts reject oversized replies per the dispatch runbook; never echo prose or pack content back
 - batch CLI calls: chain file-write → stage-submit in ONE shell command (`&&`);
   stage workers NEVER call `chapter next`; only the dispatcher advances stage boundaries
 - submits are gates, self-checks are evidence: worker-side self-check text (paths/hashes/锚点核对)
@@ -54,6 +61,10 @@
 会话由宿主新建且 history 为空（context_origin=empty），每 job 一个新 session_id，
 禁止复用。声明是宿主的接线承诺，不是对模型完整阅读的数学证明，也不是文件系统沙箱。
 只有宿主允许的文件能力/进程沙箱才能阻止其它文件读取；共享工作目录中的提示词禁令仅是纪律。
+
+收尾是一次性的（one-shot）：产出落盘 → 阶段提交通过 → 一行状态卡回报 → 立即退出。
+不要等待宿主追问、不要保持会话可续——宿主按 one-shot 派发，你的收尾消息只会被
+转录一次，长回报等于把报告灌进宿主上下文。
 
 完成回复只给状态、路径和退出码，逐条自检与引用写在阶段产物中。
 终审用引文运行 ack-read，成功后退出；它不读取其它角色的视图或汇报。
