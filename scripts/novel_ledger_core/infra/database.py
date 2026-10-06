@@ -10,6 +10,7 @@ import contextlib
 import contextvars
 import hashlib
 import json
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -85,6 +86,12 @@ class BookDatabase:
             conn = sqlite3.connect(uri, uri=True, timeout=5)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
+        # 测试加速通道：千余个用例各自建库 + 章节循环里的小事务在默认 fsync 下是
+        # 套件时长的大头。测试不需要崩溃耐久（真源在事件链 + git）， opting in 的
+        # 环境变量由 conftest 统一设置；生产环境不设该变量，语义不变。
+        if os.environ.get("NOVEL_LEDGER_TEST_FAST_DB") == "1":
+            conn.execute("PRAGMA journal_mode=MEMORY")
+            conn.execute("PRAGMA synchronous=OFF")
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version not in (0, SCHEMA_VERSION) or (version == 0 and not write):
             conn.close()

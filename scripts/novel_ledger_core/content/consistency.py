@@ -746,6 +746,129 @@ def _declared(hits: list[dict[str, Any]], *, key: str, observe: str) -> list[dic
     return hits
 
 
+def declared_fact_conflicts(
+    fact_keys: dict[str, Any],
+    prose: str,
+    *,
+    chapter: int = 0,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """按声明表的 `policy` 把命中分成两桶，供提交闸分流。
+
+    - `policy: "fixed"`（默认）——v2 锚定的纪律：该取值全书只有一个，正文与声明不符
+      是**硬错**，提交闸当场拒（回正文返工）。逃生口只有两条：改正文，或总编辑显式
+      改声明并留裁决（对应 v2 的 `anchor_change` 带 reason/evidence）。
+    - `policy: "eventful"`——该取值在书内可以合法变动（职务、住址、身份揭示），命中
+      只作 advisory 记录，交总编辑裁决，不挡线。
+
+    返回 `(fixed_hits, eventful_hits)`；`fact_keys` 为空时两桶恒空（默认零误报）。
+    """
+    fixed: list[dict[str, Any]] = []
+    eventful: list[dict[str, Any]] = []
+    for key, spec in sorted((fact_keys or {}).items()):
+        if not isinstance(spec, dict):
+            continue
+        hits = fact_key_conflicts(prose, spec, key=key, chapter=chapter)
+        if not hits:
+            continue
+        bucket = eventful if str(spec.get("policy") or "fixed").strip().lower() == "eventful" else fixed
+        bucket.extend(hits)
+    return fixed, eventful
+
+
+def _story_year(chapter: int, chapter_years: dict[Any, Any]) -> int | None:
+    """章号 → 故事年：取已声明锚点里 ≤ 本章的最近一个。没有锚点 → None（不检查）。"""
+    best: tuple[int, int] | None = None
+    for raw_chapter, raw_year in (chapter_years or {}).items():
+        try:
+            anchor_chapter = int(raw_chapter)
+            anchor_year = int(raw_year)
+        except (TypeError, ValueError):
+            continue
+        if anchor_chapter > chapter:
+            continue
+        if best is None or anchor_chapter > best[0]:
+            best = (anchor_chapter, anchor_year)
+    return best[1] if best else None
+
+
+_AGE_WINDOW = 12
+
+
+def age_anchor_conflicts(
+    prose: str,
+    *,
+    chapter: int = 0,
+    chapter_years: dict[Any, Any] | None = None,
+    birth_years: dict[str, Any] | None = None,
+    tolerance: int = 0,
+) -> list[dict[str, Any]]:
+    """年龄算术锚（吸收 v2「出生日期用 fixed anchor」的最小可用形态）。
+
+    项目声明 `chapter_years`（章号 → 故事年）与 `birth_years`（人名 → 出生年）后，
+    正文里「<人名>…N岁」的 N 必须等于 `故事年 − 出生年`（±tolerance）。年龄从此是
+    **算出来的**，不再靠每章现编——同一人物年龄链前后矛盾这一类硬伤在声明完备时
+    被算术直接定罪。任一锚点未声明则恒空（默认零误报）。
+    """
+    hits: list[dict[str, Any]] = []
+    if not isinstance(prose, str) or not prose:
+        return hits
+    year = _story_year(chapter, chapter_years or {})
+    if year is None:
+        return hits
+    tol = abs(int(tolerance or 0))
+    for name, raw_birth in (birth_years or {}).items():
+        person = str(name or "").strip()
+        if not person or len(person) < 2:
+            continue
+        try:
+            birth = int(raw_birth)
+        except (TypeError, ValueError):
+            parsed_birth = parse_number(str(raw_birth or ""))
+            if parsed_birth is None:
+                continue
+            birth = parsed_birth
+        expected = year - birth
+        start = 0
+        reported_for_person = False
+        while not reported_for_person:
+            at = prose.find(person, start)
+            if at < 0:
+                break
+            region = prose[at + len(person) : at + len(person) + _AGE_WINDOW]
+            for token_match in _NUM_TOKEN_RE.finditer(region):
+                token = _clean_numeral(token_match.group(1), token_match.group(2))
+                if token is None:
+                    continue
+                tail = token_match.group(2)
+                if not tail or tail[0] != "岁":
+                    continue
+                value = parse_number(token)
+                if value is None:
+                    continue
+                if abs(value - expected) <= tol:
+                    continue
+                hits.append(
+                    _hit(
+                        "age_anchor_conflict",
+                        key=person,
+                        kind="age",
+                        canonical=expected,
+                        observed=value,
+                        chapter=chapter,
+                        excerpt=_excerpt(prose, at, at + len(person) + token_match.end()),
+                        hint=(
+                            f"按时间锚推算，「{person}」在故事第 {year} 年应为 {expected} 岁"
+                            f"（出生年 {birth}），正文却写 {value}。年龄由锚点算出："
+                            "改正文，或总编辑改时间锚并留裁决。"
+                        ),
+                    )
+                )
+                reported_for_person = True
+                break
+            start = at + len(person)
+    return hits
+
+
 # —— 7. 跨章同键双值 ——
 
 def cross_chapter_key_conflicts(
@@ -1153,6 +1276,43 @@ def repeated_phrases(
 
 # —— 统一入口 ——
 
+def format_and_fact_issues(
+    prose: str,
+    cfg: dict[str, Any],
+    *,
+    chapter: int = 0,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """提交闸一次跑完格式 + 事实取值域 + 时间锚，按 `policy` 分流。
+
+    返回 `(hard_issues, fact_eventful, fact_fixed)`：
+    - `hard_issues`：确定性格式缺陷（进正文返工）+ fixed 取值域/时间锚冲突（v2 锚定纪律：
+      当场拒，改正文或总编辑显式改约）；
+    - `fact_eventful`：eventful 取值域命中，只记录不挡线；
+    - `fact_fixed`：fixed 冲突单独列出，供回执点名（已并入 hard_issues）。
+    """
+    from .gates import format_defect_issues
+
+    hard = format_defect_issues(prose, chapter=chapter, quote_style=str(cfg.get("quote_style") or "auto"))
+    fact_keys = cfg.get("fact_keys") if isinstance(cfg.get("fact_keys"), dict) else {}
+    fact_fixed, fact_eventful = declared_fact_conflicts(fact_keys, prose, chapter=chapter)
+    anchors = cfg.get("timeline_anchors") if isinstance(cfg.get("timeline_anchors"), dict) else {}
+    if anchors:
+        age_hits = age_anchor_conflicts(
+            prose,
+            chapter=chapter,
+            chapter_years=anchors.get("chapter_years") if isinstance(anchors.get("chapter_years"), dict) else None,
+            birth_years=anchors.get("birth_years") if isinstance(anchors.get("birth_years"), dict) else None,
+            tolerance=_as_int(anchors.get("age_tolerance")) or 0,
+        )
+        age_policy = str(anchors.get("age_policy") or "fixed").strip().lower()
+        if age_policy == "eventful":
+            fact_eventful.extend(age_hits)
+        else:
+            fact_fixed.extend(age_hits)
+    hard.extend(fact_fixed)
+    return hard, fact_eventful, fact_fixed
+
+
 def run_consistency_audit(store: Any) -> dict[str, Any]:
     """书级事实一致性总入口（只读）。
 
@@ -1175,10 +1335,12 @@ def run_consistency_audit(store: Any) -> dict[str, Any]:
 
     hits: list[dict[str, Any]] = []
     undeclared: list[dict[str, Any]] = []
+    fixed_eventful_split: dict[str, str] = {}
     for key in sorted(fact_keys):
         spec = fact_keys.get(key)
         if not isinstance(spec, dict):
             continue
+        fixed_eventful_split[key] = str(spec.get("policy") or "fixed").strip().lower()
         if not _as_list(spec.get("suffixes")) and not str(spec.get("observe") or spec.get("key") or "").strip():
             undeclared.append({"key": key, "reason": "缺少观测模式（observe/key 或 suffixes）"})
             continue
@@ -1187,6 +1349,20 @@ def run_consistency_audit(store: Any) -> dict[str, Any]:
             continue
         for chapter, prose in chapters:
             hits.extend(fact_key_conflicts(prose, spec, key=key, chapter=chapter))
+
+    # 时间锚（出生年 + 故事年 → 年龄算术）：与事实取值域同一纪律，锚未声明恒空。
+    anchors = cfg.get("timeline_anchors") if isinstance(cfg.get("timeline_anchors"), dict) else {}
+    if anchors:
+        for chapter, prose in chapters:
+            hits.extend(
+                age_anchor_conflicts(
+                    prose,
+                    chapter=chapter,
+                    chapter_years=anchors.get("chapter_years") if isinstance(anchors.get("chapter_years"), dict) else None,
+                    birth_years=anchors.get("birth_years") if isinstance(anchors.get("birth_years"), dict) else None,
+                    tolerance=_as_int(anchors.get("age_tolerance")) or 0,
+                )
+            )
 
     cross = cross_chapter_key_conflicts(chapters, quant_keys)
 
@@ -1214,6 +1390,8 @@ def run_consistency_audit(store: Any) -> dict[str, Any]:
         groups.setdefault(f"{hit['key']}", []).append(int(hit.get("chapter") or 0))
     return {
         "fact_keys": {key: fact_keys[key] for key in sorted(fact_keys)},
+        "fact_policies": fixed_eventful_split,
+        "timeline_anchors": anchors,
         "hits": hits,
         "weak_declarations": undeclared,
         "cross_chapter": cross,
@@ -1234,14 +1412,17 @@ def run_consistency_audit(store: Any) -> dict[str, Any]:
 
 
 __all__ = [
+    "age_anchor_conflicts",
     "chapter_format_issues",
     "chapter_header_style_issues",
     "count_conflicts",
     "cross_chapter_key_conflicts",
     "date_year_conflicts",
+    "declared_fact_conflicts",
     "entity_name_conflicts",
     "entity_suffix_conflicts",
     "fact_key_conflicts",
+    "format_and_fact_issues",
     "near_duplicate_passages",
     "number_conflicts",
     "quote_style_issues",

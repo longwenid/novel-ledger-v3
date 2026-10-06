@@ -461,11 +461,11 @@
       "enforced_by": [
         {
           "file": "scripts/novel_ledger_core/content/consistency.py",
-          "symbol": "def run_consistency_audit"
+          "symbol": "def format_and_fact_issues"
         },
         {
-          "file": "scripts/novel_ledger_core/content/gates.py",
-          "symbol": "def format_defect_issues"
+          "file": "scripts/novel_ledger_core/control/pipeline/_submit.py",
+          "symbol": "def stage_draft_submit"
         },
         {
           "file": "scripts/novel_ledger_core/control/autopilot.py",
@@ -475,9 +475,13 @@
       "proven_by": [
         "scripts/tests/test_consistency_neutral.py::test_fact_key_conflicts_dispatch_by_declared_kind",
         "scripts/tests/test_consistency_neutral.py::test_empty_declaration_table_yields_zero_output",
+        "scripts/tests/test_consistency_neutral.py::test_policy_split_sends_fixed_conflicts_to_hard_bucket",
+        "scripts/tests/test_consistency_neutral.py::test_age_anchor_convicts_arithmetically_impossible_age",
         "scripts/tests/test_consistency_audit.py::test_checkpoint_blocks_on_hard_fact_conflict",
         "scripts/tests/test_consistency_audit.py::test_completion_audit_blocks_on_fact_and_format_findings",
-        "scripts/tests/test_chapter_format.py::test_dirty_draft_is_rejected_at_the_draft_stage"
+        "scripts/tests/test_chapter_format.py::test_dirty_draft_is_rejected_at_the_draft_stage",
+        "scripts/tests/test_chapter_format.py::test_draft_with_fixed_fact_conflict_is_rejected",
+        "scripts/tests/test_chapter_format.py::test_draft_with_age_anchor_conflict_is_rejected"
       ]
     },
     {

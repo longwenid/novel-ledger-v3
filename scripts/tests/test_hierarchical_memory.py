@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from novel_ledger_core.content.hierarchical_memory import (
     load_hierarchical_memory,
     memory_for_pack,
@@ -112,6 +114,7 @@ def test_rebuild_after_rollback_removes_discarded_chapter(tmp_path: Path):
     assert "事实4" not in canonical_json(rebuilt).decode("utf-8")
 
 
+@pytest.mark.slow
 def test_one_thousand_chapter_hierarchy_loads_current_phase_without_model_calls(tmp_path: Path):
     """1000 章只写确定性 L1 JSON 并本地滚层，不触发模型、usage 或正文生成。"""
     chapters = [

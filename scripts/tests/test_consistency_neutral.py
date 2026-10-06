@@ -12,14 +12,17 @@
 from __future__ import annotations
 
 from novel_ledger_core.content.consistency import (
+    age_anchor_conflicts,
     chapter_format_issues,
     chapter_header_style_issues,
     count_conflicts,
     cross_chapter_key_conflicts,
     date_year_conflicts,
+    declared_fact_conflicts,
     entity_name_conflicts,
     entity_suffix_conflicts,
     fact_key_conflicts,
+    format_and_fact_issues,
     near_duplicate_passages,
     number_conflicts,
     quote_style_issues,
@@ -165,6 +168,85 @@ def test_empty_declaration_table_yields_zero_output():
         ("number", {"kind": "number", "observe": "", "canonical": 11}),
     ):
         assert fact_key_conflicts(prose, spec, key=kind) == []
+
+
+# —— 6b. policy 分流（吸收 v2 锚定的 fixed/eventful 纪律） ——
+
+def test_policy_split_sends_fixed_conflicts_to_hard_bucket():
+    fk = {"k_age": {"kind": "number", "observe": "岁", "canonical": 11}}
+    fixed, eventful = declared_fact_conflicts(fk, "他十六岁那年进的山。", chapter=5)
+    assert [hit["observed"] for hit in fixed] == [16]
+    assert eventful == []
+
+
+def test_policy_split_sends_eventful_conflicts_to_advisory_bucket():
+    # 职务/身份这类合法可变的事实声明为 eventful：命中只记录，不挡线
+    fk = {"k_post": {"kind": "set", "observe": "职务", "canonical": "股长",
+                     "allow": ["副股长"], "policy": "eventful"}}
+    fixed, eventful = declared_fact_conflicts(fk, "他的职务是副股长。", chapter=5)
+    assert fixed == []
+    assert [hit["observed"] for hit in eventful] == ["副股长"]
+
+
+def test_policy_split_is_silent_without_declarations():
+    assert declared_fact_conflicts({}, "他十六岁。", chapter=1) == ([], [])
+
+
+# —— 6c. 时间锚：年龄是算出来的（吸收 v2「出生日期用 fixed anchor」） ——
+
+_ANCHORS = {"chapter_years": {"1": 1993}, "birth_years": {"张甲": 1987}}
+
+
+def test_age_anchor_convicts_arithmetically_impossible_age():
+    # 1993 − 1987 = 6，正文写十六 → 算术定罪
+    hits = age_anchor_conflicts("张甲十六岁那年进了城。", chapter=1,
+                                chapter_years=_ANCHORS["chapter_years"],
+                                birth_years=_ANCHORS["birth_years"])
+    assert [(hit["canonical"], hit["observed"]) for hit in hits] == [(6, 16)]
+    assert hits[0]["code"] == "age_anchor_conflict"
+
+
+def test_age_anchor_accepts_computed_age():
+    prose = "张甲六岁那年进了城，那年冬天雪下得早。"
+    assert age_anchor_conflicts(prose, chapter=1,
+                                chapter_years=_ANCHORS["chapter_years"],
+                                birth_years=_ANCHORS["birth_years"]) == []
+
+
+def test_age_anchor_is_silent_without_anchors():
+    # 任一锚点未声明 → 恒空：时间锚是 opt-in 的
+    assert age_anchor_conflicts("张甲十六岁。", chapter=1) == []
+    assert age_anchor_conflicts("张甲十六岁。", chapter=1,
+                                chapter_years=_ANCHORS["chapter_years"]) == []
+    assert age_anchor_conflicts("张甲十六岁。", chapter=1,
+                                birth_years=_ANCHORS["birth_years"]) == []
+
+
+def test_age_anchor_picks_nearest_declared_year():
+    hits = age_anchor_conflicts("张甲十六岁进了城。", chapter=8,
+                                chapter_years={"1": 1993, "6": 2003},
+                                birth_years=_ANCHORS["birth_years"])
+    assert [(hit["canonical"], hit["observed"]) for hit in hits] == [(16, 16)] or hits == []
+    # 2003 − 1987 = 16：正文写十六是对的 → 不报
+    assert hits == []
+
+
+def test_age_anchor_tolerance_absorbs_off_by_one():
+    prose = "张甲七岁那年进了城。"
+    assert age_anchor_conflicts(prose, chapter=1, chapter_years=_ANCHORS["chapter_years"],
+                                birth_years=_ANCHORS["birth_years"], tolerance=1) == []
+
+
+def test_format_and_fact_gate_merges_format_and_fixed_facts():
+    cfg = {
+        "quote_style": "auto",
+        "fact_keys": {"k_age": {"kind": "number", "observe": "岁", "canonical": 11}},
+    }
+    hard, eventful, fixed = format_and_fact_issues(
+        "第1章 起局\n他十六岁那年进的山。\n", cfg, chapter=1
+    )
+    assert [hit["code"] for hit in hard] == ["fact_value_conflict"]
+    assert fixed and eventful == []
 
 
 # —— 8. 跨章同键双值 ——

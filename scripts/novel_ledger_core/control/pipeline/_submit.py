@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from ...content.gates import (blocking_plot_findings, expected_delta_duplicate_warnings, collect_plot_findings, foreign_fragment_issues, format_defect_issues, plot_findings_issues, recheck_beat_anchor_blockers, validate_prose_anchors, validate_write_output, word_count_warnings)
+from ...content.consistency import format_and_fact_issues
 from ...content.pack import (inputs_fingerprint)
 from ...content.style_check import (check_style_hard, style_direction)
 from ...infra.store import (PHASE_AWAIT_ASSEMBLY, PHASE_AWAIT_DRAFT, PHASE_AWAIT_POLISH, PHASE_BLOCKED, PHASE_SUBMITTED, BookStore)
@@ -149,10 +150,13 @@ def stage_draft_submit(store: BookStore) -> dict[str, Any]:
     # 成稿格式前置闸：与字数带、外文残片同 philosophy——在最便宜的 draft 点就地拦下。
     # 只写作模式（polish=off）下草稿即终稿，这道闸是格式残留唯一还能被拦住的地方，
     # 因此不能只挂在 assemble 的 submit 上。
-    format_issues = format_defect_issues(
+    # 同闸带上事实取值域与时间锚（fixed policy）：v2 锚定纪律——声明的取值与正文不符
+    # 是硬错，在单章提交点就死，不养到批级检查点再花模型轮次解。
+    draft_cfg = store.load_config()
+    format_issues, fact_eventful, _fact_fixed = format_and_fact_issues(
         draft_text,
+        draft_cfg,
         chapter=chapter,
-        quote_style=str(store.load_config().get("quote_style") or "auto"),
     )
     if format_issues:
         _log_quality(store, chapter, "draft_format", verdict="fail", issues=format_issues[:5])
@@ -161,14 +165,19 @@ def stage_draft_submit(store: BookStore) -> dict[str, Any]:
             phase=PHASE_AWAIT_DRAFT,
             chapter=chapter,
             violations=format_issues,
+            fact_eventful_count=len(fact_eventful),
             hint=(
-                "the draft carries deterministic format/typography defects (duplicated chapter "
-                "header, writing-stage markers, unpaired or mixed quote systems); phase stays "
+                "the draft carries deterministic defects (format/typography residue, or a "
+                "declared fact-key/timeline-anchor value that contradicts the prose); phase stays "
                 "await_draft — fix the same staging file in place (it is kept), then run "
                 "`chapter draft-submit` again. Lock the book's quote system with "
-                "`config set --key quote_style --value <cn_double|cn_corner|zh_book|ascii>`."
+                "`config set --key quote_style --value <cn_double|cn_corner|zh_book|ascii>`; "
+                "fact values and anchors live in `config.fact_keys` / `config.timeline_anchors` "
+                "(see references/fact-registry.md) — amending them is an editorial decision."
             ),
         )
+    if fact_eventful:
+        _log_quality(store, chapter, "draft_fact_eventful", verdict="warn", issues=fact_eventful[:5])
     if _polish_disabled(store):
         # 只写作模式（config.polish=off）：草稿即终稿。字数带是章合同仍在 draft 收口；
         # 文风机检整体退出写链（要自查用 `chapter precheck`，只读不拦线），润色相位跳过，
@@ -182,6 +191,7 @@ def stage_draft_submit(store: BookStore) -> dict[str, Any]:
             verdict="draft_accepted",
             phase=head["phase"],
             chapter=chapter,
+            fact_eventful_count=len(fact_eventful),
             hint=(
                 "polish disabled (draft-only mode): the draft is the final prose; "
                 "run chapter next to get the assembly task"
@@ -250,21 +260,20 @@ def stage_polish_submit(store: BookStore) -> dict[str, Any]:
     # 注意判据取 canonical pack（视图是它的派生切片，视图裁剪不影响本机检）。
     canon_pack = stable_read_json(store.current_pack_path)
     # 格式/体例闸同理：润色会在场景级重构里重排标点与引号，本相位就地拦、只回重润。
-    format_issues = format_defect_issues(
+    # 事实取值域与时间锚同闸复扫（fixed policy 硬拒）：草稿过闸只说明草稿干净，
+    # 润色改写仍可能引入与新取值/锚点矛盾的表述。
+    polish_cfg = store.load_config()
+    format_issues, fact_eventful, _fact_fixed = format_and_fact_issues(
         polished_text,
+        polish_cfg,
         chapter=chapter,
-        quote_style=str(store.load_config().get("quote_style") or "auto"),
     )
     if format_issues:
         draft_path = store.draft_text_path(chapter)
         draft_text = draft_path.read_text(encoding="utf-8") if draft_path.exists() else ""
         draft_codes = {
             str(issue.get("code") or "")
-            for issue in format_defect_issues(
-                draft_text,
-                chapter=chapter,
-                quote_style=str(store.load_config().get("quote_style") or "auto"),
-            )
+            for issue in format_and_fact_issues(draft_text, polish_cfg, chapter=chapter)[0]
         }
         polish_only = [
             issue for issue in format_issues if str(issue.get("code") or "") not in draft_codes
@@ -278,11 +287,13 @@ def stage_polish_submit(store: BookStore) -> dict[str, Any]:
                 polished_output_path=str(path),
                 polished_kept=True,
                 violations=polish_only,
+                fact_eventful_count=len(fact_eventful),
                 hint=(
-                    "the polished prose introduced format/typography defects (mixed or unpaired "
-                    "quote systems, duplicated chapter header, writing-stage markers); the file is "
-                    "KEPT at polished_output_path — fix it in place, then run `chapter "
-                    "polish-submit` again."
+                    "the polished prose introduced deterministic defects (mixed or unpaired "
+                    "quote systems, duplicated chapter header, writing-stage markers, or a "
+                    "declared fact/anchor value contradicted); the file is KEPT at "
+                    "polished_output_path — fix it in place, then run `chapter polish-submit` "
+                    "again."
                 ),
             )
     anchor_issues = validate_prose_anchors(polished_text, canon_pack)
@@ -399,13 +410,15 @@ def _submission_review(
         issues.extend(foreign_fragment_issues(polished))
     # 成稿格式与体例：章头重复/错号、写作期残留标记、引号体例混用或未闭合。
     # 同样是确定性缺陷，进正文返工路（不在 _ASSEMBLY_ONLY_ISSUES 里，故判 fix_draft）。
-    issues.extend(
-        format_defect_issues(
-            polished,
-            chapter=int(store.read_head().get("chapter") or 0),
-            quote_style=str(cfg.get("quote_style") or "auto"),
-        )
+    # fixed 取值域与时间锚同闸：这是入账前最后一道确定性防线。
+    fact_hard, fact_eventful, _fact_fixed = format_and_fact_issues(
+        polished,
+        cfg,
+        chapter=int(store.read_head().get("chapter") or 0),
     )
+    issues.extend(fact_hard)
+    if fact_eventful:
+        warnings.extend({**item, "code": "fact_value_eventful"} for item in fact_eventful)
     issues.extend(plot_findings_issues(output, polished, required=int(cfg.get("review_contract_version", 2)) >= 2))
     plot_issues = collect_plot_findings(output) if plot_self_check_enabled else []
     warnings = word_count_warnings(output, pack, prose=polished)

@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from novel_ledger_core.content.hierarchical_memory import (
     memory_for_pack,
     update_hierarchical_memory,
@@ -131,6 +133,7 @@ def _pack_chars(store: BookStore, chapter: int) -> int:
     return len(canonical_json(assemble_pack(store, chapter)).decode("utf-8"))
 
 
+@pytest.mark.slow
 def test_long_run_loads_relevant_history_and_keeps_ledger_rebuildable(tmp_path: Path):
     store = _make_store(tmp_path)
     for n in range(1, CHAPTERS + 1):

@@ -21,6 +21,11 @@ if str(ROOT) not in sys.path:
 def _disable_plan_low_water_in_tests():
     from novel_ledger_core.infra import store as store_mod
 
+    # 测试专用数据库加速：默认 fsync 在千余个用例的建库+章节循环上是套件时长
+    # 大头（实测单用例地板 0.66s）。测试不需要崩溃耐久——真源在事件链，git 兜底；
+    # 生产环境不设此变量，durability 语义不变。
+    os.environ.setdefault("NOVEL_LEDGER_TEST_FAST_DB", "1")
+
     old = store_mod.DEFAULT_CONFIG.get("plan_low_water")
     store_mod.DEFAULT_CONFIG["plan_low_water"] = 0
     old_style = store_mod.DEFAULT_CONFIG.get("style_check")

@@ -58,9 +58,16 @@ worker）。`chapter next` → 派子 agent → 核验记账 → 下一阶段/�
 卷界报告另外引用当前卷的完整滚层摘要、卷纲和下卷合同。
 检查点同时出**跨章事实一致性**（`continuity` 节）：项目按
 [事实登记表](fact-registry.md) 声明了取值域时，硬事实冲突（同一实体两套称谓、同一数值键
-两个值、同一时点两个年份、互斥集合两个成员、清单总数对不上）进 `blockers` → `review_required`
-停线裁决；跨章近重复叙述、章节格式体例与高频片段进 `advisories`（判断项，不是错误项）。
-`fact_keys` 为空时本段恒空并出 `fact_declarations_missing` advisory。
+两个值、同一时点两个年份、互斥集合两个成员、清单总数对不上、年龄与时间锚算术不符）进
+`blockers` → `review_required` 停线裁决；跨章近重复叙述、章节格式体例与高频片段进
+`advisories`（判断项，不是错误项）。`fact_keys` 为空时本段恒空并出
+`fact_declarations_missing` advisory。
+
+**止损点在单章，不在检查点**：`policy: fixed` 的取值域冲突与时间锚算术矛盾在
+`chapter draft-submit` 就地拒（`draft_rejected`，零模型修复——改正文或改声明），
+正常情况下检查点的 `fact_value_conflict` blocker 只接住漏网（如声明后补写的旧章）。
+无人连写的预算纪律由此成立：漂移在产生它的那一章死掉，最便宜的确定性闸先跑，
+模型轮次只花在真正需要判断的地方。
 读取不设单文件字节上限，也不按日志尾部字节数漏掉窗口内事件。诊断报告可按章或记录分页，
 选中的摘要、资产与证据保留全文和来源路径。`run status` 的 `last_checkpoint`
 只保存报告路径与结论；`autopilot-events.jsonl` 记录 `quality_checkpoint`，卷界额外记录

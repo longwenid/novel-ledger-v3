@@ -107,3 +107,55 @@ def test_polish_stage_rejects_format_defects_it_introduced(tmp_path):
     assert {item["code"] for item in result["violations"]} == {"quote_style_mixed"}, result
     assert result["polished_kept"] is True
     assert store.read_head()["phase"] == "await_polish"
+
+
+# —— v2 锚定纪律：fixed 取值域与时间锚在提交点硬拒 ——
+
+def _declare(store: BookStore, key: str, spec: dict) -> None:
+    cfg = store.load_config()
+    cfg["fact_keys"] = {**(cfg.get("fact_keys") or {}), key: spec}
+    store.save_config(cfg)
+
+
+def test_draft_with_fixed_fact_conflict_is_rejected(tmp_path):
+    """声明「十一岁」后草稿写十六 → draft-submit 当场拒，不养到检查点。"""
+    store = _store(tmp_path)
+    _declare(store, "k_age", {"kind": "number", "observe": "岁", "canonical": 11})
+    result = _submit_draft(store, "第1章 起局\n\n" + _BODY + "他十六岁那年进了山。\n")
+    assert result["verdict"] == "draft_rejected", result
+    assert [item["code"] for item in result["violations"]] == ["fact_value_conflict"], result
+    assert result["violations"][0]["observed"] == 16
+    assert store.read_head()["phase"] == "await_draft"
+
+
+def test_eventful_fact_conflict_does_not_block_draft(tmp_path):
+    """eventful 声明的合法变动只记录，不挡线（回执带 fact_eventful_count）。"""
+    store = _store(tmp_path)
+    _declare(store, "k_post", {"kind": "set", "observe": "职务", "canonical": "股长",
+                               "allow": ["副股长"], "policy": "eventful"})
+    result = _submit_draft(store, "第1章 起局\n\n" + _BODY + "他的职务是副股长。\n")
+    assert result["verdict"] == "draft_accepted", result
+    assert result.get("fact_eventful_count") == 1, result
+
+
+def test_draft_with_age_anchor_conflict_is_rejected(tmp_path):
+    """出生年+故事年声明后，年龄是算出来的：算术矛盾当场拒。"""
+    store = _store(tmp_path)
+    cfg = store.load_config()
+    cfg["timeline_anchors"] = {"chapter_years": {"1": 1993}, "birth_years": {"张甲": 1987}}
+    store.save_config(cfg)
+    result = _submit_draft(store, "第1章 起局\n\n" + _BODY + "张甲十六岁那年进了城。\n")
+    assert result["verdict"] == "draft_rejected", result
+    assert [item["code"] for item in result["violations"]] == ["age_anchor_conflict"], result
+    assert result["violations"][0]["canonical"] == 6
+
+
+def test_draft_matching_all_anchors_passes(tmp_path):
+    store = _store(tmp_path)
+    _declare(store, "k_age", {"kind": "number", "observe": "岁", "canonical": 11})
+    cfg = store.load_config()
+    cfg["timeline_anchors"] = {"chapter_years": {"1": 1993}, "birth_years": {"张甲": 1982}}
+    store.save_config(cfg)
+    # 1993 − 1982 = 11，与 fact_keys 声明一致
+    result = _submit_draft(store, "第1章 起局\n\n" + _BODY + "张甲十一岁那年进了城。\n")
+    assert result["verdict"] == "draft_accepted", result

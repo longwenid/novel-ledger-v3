@@ -67,9 +67,10 @@ Windows / Git Bash 的解释器探测与路径规则见 [运行平台](reference
 - findings 分为 `BLOCKER/WARNING/NIT/UNVERIFIABLE`；只有 BLOCKER 自动返工，其他留痕裁决；
   重大裁决写入 `book/editorial/decisions.jsonl`（`Ruling: 内容 — 依据 — 若错代价`）。
 - 同一事实全书只允许一个取值：项目按 `config.fact_keys` 声明取值域（`entity`/`number`/`date`/`set`/`count`
-  五类，规则见[事实登记表](references/fact-registry.md)），机检扫全书；同一实体两套称谓、同一数值键两个值、
-  同一时点两个年份、互斥集合两个成员、清单总数对不上都点名。确定性格式缺陷（重复章头、写作期分场标记、
-  成稿残留、引号体例混用或未闭合）在 `draft-submit`/`polish-submit` 就地判回正文；跨章事实冲突在
+  五类，`policy: fixed` 默认硬拒、`eventful` 只记录；`config.timeline_anchors` 声明出生年与故事年后
+  年龄由算术推出；规则见[事实登记表](references/fact-registry.md)），机检扫全书；同一实体两套称谓、同一数值键两个值、
+  同一时点两个年份、互斥集合两个成员、清单总数对不上、年龄与锚点算术不符都点名。确定性格式缺陷（重复章头、写作期分场标记、
+  成稿残留、引号体例混用或未闭合）与 fixed 冲突在 `draft-submit`/`polish-submit` 就地判回正文；跨章事实冲突在
   检查点停线，`book audit`/`book reconcile`/`book facts` 出待办，`book complete` 收为 blocker。
   未声明取值域时全部事实探针恒空（默认零误报），`book audit` 出 `fact_declarations_missing` advisory。
 - 模型档位按 job：独立终审、策划与全书复核用最强档，执笔、润色、组装用标准档，机械单点用经济档。

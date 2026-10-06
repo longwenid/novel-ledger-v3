@@ -366,6 +366,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "repeated_phrase_min_count": 6,
         "repeated_phrase_cap": 20,
     },
+    # 时间锚（吸收 v2「出生日期用 fixed anchor」的最小形态）。声明后年龄是**算出来的**：
+    #   chapter_years: 章号 → 故事年（稀疏即可，取 ≤ 本章最近锚）；
+    #   birth_years:   人名 → 出生年；正文「<人名>…N岁」的 N 必须等于 故事年−出生年。
+    #   age_tolerance: 容差（默认 0）；age_policy: fixed（默认，冲突当场拒）/eventful（只记录）。
+    # 留空 → 年龄探针恒空（默认零误报）。写法见 references/fact-registry.md。
+    "timeline_anchors": {},
 }
 
 # 编拍纪律：每章 5 场戏。空列表仍 missing_beats；条数不在带内只警告，submit 不因此 rejected。

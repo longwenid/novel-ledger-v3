@@ -79,11 +79,46 @@ python3 "$SKILL_ROOT/scripts/novel_ledger.py" config get --key fact_keys --proje
 `kind=entity` 配 `observe` 时只报**近形名**（与规范名同起首字、不在 `aliases` 里），
 避开同句里的任意词；`suffixes` 则按后缀族扫，适合家族/宅院这类集体称谓。
 
+## 三点五、`policy`：fixed 是硬闸，eventful 只记录（吸收 v2 锚定纪律）
+
+每条声明可带 `policy` 字段（默认 `fixed`）：
+
+- **`fixed`**——该取值全书只有一个。正文与声明不符是**硬错**：`chapter draft-submit` /
+  `polish-submit` / `submit` 当场拒（回正文返工），不等检查点。逃生口只有两条：
+  改正文，或总编辑显式改声明并留裁决（对应 v2 `anchor_change` 的 reason/evidence 纪律）。
+- **`eventful`**——该取值在书内可以合法变动（职务、住址、身份揭示、师徒变对手）。
+  命中只进 advisory（`fact_eventful` / 回执 `fact_eventful_count`），交总编辑裁决，不挡线。
+
+选法：**称谓、亲属、生死、出生年、侧别这类一生一次的事实用 `fixed`；职务、住址、
+称谓随剧情演变的事实用 `eventful`**。把可变事实钉成 fixed 是最常见的自伤——
+每章返工都是它造成的。
+
+## 三点六、时间锚：年龄是算出来的（吸收 v2「出生日期用 fixed anchor」）
+
+v2 的经验：**出生日期锁成锚，年龄就成了算术**，不再靠每章现编。v3 的最小等价物是
+`config.timeline_anchors`：
+
+```bash
+python3 "$SKILL_ROOT/scripts/novel_ledger.py" config set \
+  --key timeline_anchors \
+  --value '{"chapter_years":{"1":1993},"birth_years":{"<人名>":1987},"age_tolerance":0,"age_policy":"fixed"}' \
+  --project "$PROJECT"
+```
+
+- `chapter_years`：章号 → 故事年。**稀疏即可**——只在时间跳跃处声明锚，取 ≤ 本章最近的锚。
+- `birth_years`：人名 → 出生年。正文「<人名>…N岁」的 N 必须等于 `故事年 − 出生年`。
+- `age_tolerance`：容差（默认 0，虚岁/周岁口径差可给 1）。
+- `age_policy`：`fixed`（默认，冲突当场拒）/ `eventful`（只记录）。
+
+年龄链前后矛盾（「五岁半」→「十六」）这类硬伤，在锚点完备时被算术直接定罪；
+任一锚点未声明则恒空，默认零误报。锚点写错会**全书一致地错**——所以锚点本身
+在开书时按正典定死，改动视同改正典（走总编辑裁决）。
+
 ## 四、什么时候扫、在哪拦
 
 | 时机 | 命令 | 结果性质 |
 |---|---|---|
-| 章内提交 | `chapter draft-submit` / `chapter polish-submit` / `chapter submit` | **格式类**（重复章头、错章号、分场标记、引号混用/不闭合）当场判 `fix_draft`／`polish_rejected` 回正文；事实取值域在批级扫 |
+| 章内提交 | `chapter draft-submit` / `chapter polish-submit` / `chapter submit` | **格式类**与 **`fixed` 取值域/时间锚冲突**当场判 `fix_draft`／`draft_rejected` 回正文；`eventful` 命中只记录（回执 `fact_eventful_count`） |
 | 批级检查点 | `run checkpoint`（每 10 章） | 硬事实冲突进 `blockers` → `review_required` 停线；近重复/格式/高频片段进 `advisories` |
 | 全书巡检 | `book audit` | 出 `fact_issues` / `chapter_format` / `near_duplicate_passages` / `repeated_phrases` |
 | 一次收口 | `book reconcile` | 把上面几类并进 `chapters_to_fix` 待办表 |
